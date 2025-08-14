@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Music Emotion Annotation Tool",
+  "description": "A web-based tool for annotating emotional responses to audio tracks. Users can load local audio files, place markers on a timeline, and label them with various emotional and contextual attributes. The annotations can be exported to and imported from CSV files, and the session is automatically saved to the browser's local storage.",
+  "requestFramePermissions": []
+}

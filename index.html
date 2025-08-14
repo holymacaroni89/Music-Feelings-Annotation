@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Music Emotion Annotation Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'gray': {
+                            900: '#1a1d21',
+                            800: '#23272d',
+                            700: '#30363d',
+                            600: '#484f58',
+                            500: '#6e7681',
+                            400: '#909dab',
+                            300: '#cdd5e0',
+                            200: '#f0f6fc',
+                            100: '#ffffff',
+                        },
+                        'blue': {
+                          500: '#2f81f7',
+                          400: '#388bfd',
+                        },
+                        'red': {
+                          600: '#d83c3e',
+                          700: '#b22527',
+                        },
+                        'green': {
+                          500: '#2a9d3c',
+                          600: '#238636',
+                        },
+                         'yellow': {
+                            300: '#d29922',
+                            700: '#6e5513',
+                            900: '#34290f'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
+    "react/": "https://esm.sh/react@^19.1.1/",
+    "react": "https://esm.sh/react@^19.1.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-gray-900 text-gray-200">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>
