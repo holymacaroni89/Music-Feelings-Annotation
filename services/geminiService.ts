@@ -85,10 +85,10 @@ const suggestionSchema = {
     required: ["suggestions"],
 };
 
-export const generateMerSuggestions = async (waveform: WaveformPoint[], duration: number): Promise<MerSuggestion[]> => {
+export const generateMerSuggestions = async (waveform: WaveformPoint[], duration: number, lyrics?: string): Promise<MerSuggestion[]> => {
     const summarizedData = summarizeWaveform(waveform, duration);
     
-    const systemInstruction = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your task is to analyze summarized audio waveform data and identify the most emotionally significant moments in a piece of music, providing a comprehensive annotation for each.
+    const baseSystemInstruction = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your task is to analyze summarized audio waveform data and identify the most emotionally significant moments in a piece of music, providing a comprehensive annotation for each.
 The input data is a semicolon-separated list of summaries. Each summary represents a point in time and contains:
 - t: The timestamp in seconds.
 - amp_avg: The average amplitude (volume).
@@ -108,10 +108,20 @@ For each moment you identify, provide a full annotation:
 - trigger: An array of the most likely musical triggers. This must be a subset of: ${Object.values(Trigger).join(', ')}.
 - sync_notes: Brief, objective notes on the specific musical event at this exact timestamp (e.g., 'Vocal entry', 'Beat drop', 'Guitar solo starts').`;
     
+    const lyricsContextInstruction = "\n\nYou will also be provided with the song's lyrics for additional context. Use the overall mood and themes of the lyrics to inform your emotional analysis of the audio data. Correlate changes in the audio data with the lyrical content.";
+    
+    const systemInstruction = baseSystemInstruction + (lyrics ? lyricsContextInstruction : '');
+    
+    let promptContent = `Here is the summarized audio data for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments and provide full annotations.\n\nDATA: ${summarizedData}`;
+    
+    if (lyrics) {
+        promptContent = `Here is the summarized audio data and lyrics for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments and provide full annotations, using the lyrics as context.\n\nLYRICS:\n${lyrics}\n\nDATA: ${summarizedData}`;
+    }
+
     try {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Here is the summarized audio data for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments and provide full annotations.\n\nDATA: ${summarizedData}`,
+            contents: promptContent,
             config: {
                 systemInstruction: systemInstruction,
                 responseMimeType: "application/json",

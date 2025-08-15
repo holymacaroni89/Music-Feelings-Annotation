@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as tf from '@tensorflow/tfjs';
-import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, SettingsIcon, UserIcon, PlusIcon, SparklesIcon } from './components/icons';
+import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, SettingsIcon, UserIcon, PlusIcon, SparklesIcon, LyricsIcon, XIcon } from './components/icons';
 import Timeline from './components/Timeline';
 import LabelPanel from './components/LabelPanel';
 import MarkerList from './components/MarkerList';
+import Modal from './components/Modal';
 import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette, Profile, MerSuggestion, TrainingSample, GEMS, Trigger } from './types';
 import { AUTOSAVE_KEY, GEMS_OPTIONS, TRIGGER_OPTIONS } from './constants';
 import { exportToCsv, importFromCsv } from './services/csvService';
@@ -74,12 +75,19 @@ const generateSpectralWaveformData = async (audioBuffer: AudioBuffer, targetPoin
     });
 };
 
+interface ModalConfig {
+    type: 'ADD_PROFILE' | 'EDIT_LYRICS';
+    title: string;
+    submitText: string;
+}
+
 
 // --- Main App Component ---
 const App: React.FC = () => {
     const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
     const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
     const [trackInfo, setTrackInfo] = useState<TrackInfo | null>(null);
+    const [lyrics, setLyrics] = useState('');
     
     const [markers, setMarkers] = useState<Marker[]>([]);
     const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
@@ -95,6 +103,10 @@ const App: React.FC = () => {
     // AI Model State
     const [personalModel, setPersonalModel] = useState<tf.LayersModel | null>(null);
     const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'done'>('idle');
+    
+    // Modal State
+    const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
+    const [modalInputValue, setModalInputValue] = useState('');
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -243,6 +255,7 @@ const App: React.FC = () => {
         setIsProcessingAudio(true);
         setProcessingMessage('Decoding audio file...');
         setMerSuggestions([]);
+        setLyrics(''); // Reset lyrics on new file load
         const reader = new FileReader();
         reader.onload = async (e) => {
             const arrayBuffer = e.target?.result as ArrayBuffer;
@@ -296,7 +309,7 @@ const App: React.FC = () => {
                 setIsProcessingAudio(true);
                 setProcessingMessage('Analyzing emotions with AI...');
                 try {
-                    const baseSuggestions = await geminiService.generateMerSuggestions(waveform, trackInfo.duration_s);
+                    const baseSuggestions = await geminiService.generateMerSuggestions(waveform, trackInfo.duration_s, lyrics);
                     if (personalModel) {
                         console.log("Applying personal model to Gemini suggestions...");
                         const refinedSuggestions = mlService.predict(personalModel, baseSuggestions);
@@ -318,7 +331,7 @@ const App: React.FC = () => {
         };
 
         analyzeEmotions();
-    }, [waveform, trackInfo, personalModel]);
+    }, [waveform, trackInfo, personalModel, lyrics]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -469,18 +482,48 @@ const App: React.FC = () => {
         }
     }, [markers, handleScrub]);
 
-    // --- Profile & AI Model Handling ---
-    const handleAddNewProfile = () => {
-        const name = prompt("Enter new profile name:");
-        if (name && !profiles.find(p => p.name === name)) {
-            const newProfile: Profile = { id: crypto.randomUUID(), name };
-            const newProfiles = [...profiles, newProfile];
-            setProfiles(newProfiles);
-            setActiveProfileId(newProfile.id);
-            setIsDirty(true);
-        } else if (name) {
-            alert("A profile with this name already exists.");
+    // --- Profile, Lyrics & Modal Handling ---
+    const handleAddNewProfileClick = () => {
+        setModalInputValue('');
+        setModalConfig({
+            type: 'ADD_PROFILE',
+            title: 'Create New Profile',
+            submitText: 'Create',
+        });
+    };
+    
+    const handleEditLyricsClick = () => {
+        setModalInputValue(lyrics);
+        setModalConfig({
+            type: 'EDIT_LYRICS',
+            title: 'Add/Edit Lyrics',
+            submitText: 'Save Lyrics',
+        });
+    };
+
+    const handleModalClose = () => {
+        setModalConfig(null);
+        setModalInputValue('');
+    };
+
+    const handleModalSubmit = () => {
+        if (!modalConfig) return;
+
+        if (modalConfig.type === 'ADD_PROFILE') {
+            const name = modalInputValue.trim();
+            if (name && !profiles.find(p => p.name === name)) {
+                const newProfile: Profile = { id: crypto.randomUUID(), name };
+                const newProfiles = [...profiles, newProfile];
+                setProfiles(newProfiles);
+                setActiveProfileId(newProfile.id);
+                setIsDirty(true);
+            } else if (name) {
+                alert("A profile with this name already exists.");
+            }
+        } else if (modalConfig.type === 'EDIT_LYRICS') {
+            setLyrics(modalInputValue);
         }
+        handleModalClose();
     };
 
     const handleRefineProfile = async () => {
@@ -558,7 +601,7 @@ const App: React.FC = () => {
     }, [isDirty, markers, trackInfo, profiles, activeProfileId]);
 
     const handleKeyboardShortcuts = useCallback((e: KeyboardEvent) => {
-        if ((e.target as HTMLElement).tagName.match(/INPUT|TEXTAREA|SELECT/)) return;
+        if ((e.target as HTMLElement).tagName.match(/INPUT|TEXTAREA|SELECT/) || !!modalConfig) return;
         
         switch(e.code) {
             case 'Space': e.preventDefault(); togglePlayPause(); break;
@@ -572,7 +615,7 @@ const App: React.FC = () => {
             case 'ArrowRight': e.preventDefault(); handleScrub(currentTime + (e.shiftKey ? 1 : 5)); break;
             case 'ArrowLeft': e.preventDefault(); handleScrub(currentTime - (e.shiftKey ? 1 : 5)); break;
         }
-    }, [togglePlayPause, handleMarkerCreationToggle, selectedMarkerId, deleteMarker, handleScrub, currentTime, pendingMarkerStart]);
+    }, [togglePlayPause, handleMarkerCreationToggle, selectedMarkerId, deleteMarker, handleScrub, currentTime, pendingMarkerStart, modalConfig]);
     
     useEffect(() => {
         window.addEventListener('keydown', handleKeyboardShortcuts);
@@ -632,7 +675,7 @@ const App: React.FC = () => {
                         >
                             {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
-                        <button onClick={handleAddNewProfile} className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
+                        <button onClick={handleAddNewProfileClick} className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
                             <PlusIcon />
                         </button>
                          <div className="text-xs text-gray-400 ml-2 tabular-nums flex items-center gap-3" title="Number of annotations collected for training the personal AI model.">
@@ -649,7 +692,14 @@ const App: React.FC = () => {
                             )}
                         </div>
                     </div>
-                     {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
+                     <div className="flex items-center gap-2">
+                        {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
+                        {trackInfo && (
+                            <button onClick={handleEditLyricsClick} className="p-1.5 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white" title="Add/Edit Lyrics">
+                                <LyricsIcon />
+                            </button>
+                        )}
+                    </div>
                 </div>
                 {trackInfo && (
                     <div className="flex items-center gap-4">
@@ -795,6 +845,48 @@ const App: React.FC = () => {
                     <button onClick={handleExport} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition-colors" disabled={markers.length === 0}>Export CSV</button>
                 </div>
             </footer>
+            
+            {modalConfig && (
+                <Modal onClose={handleModalClose}>
+                    <div className="p-6">
+                        <div className="flex justify-between items-center mb-4">
+                           <h3 className="text-xl font-bold text-gray-100">{modalConfig.title}</h3>
+                           <button onClick={handleModalClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                               <XIcon />
+                           </button>
+                        </div>
+                        
+                        {modalConfig.type === 'ADD_PROFILE' ? (
+                            <input
+                                type="text"
+                                value={modalInputValue}
+                                onChange={(e) => setModalInputValue(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Enter profile name..."
+                                autoFocus
+                                onKeyDown={(e) => e.key === 'Enter' && handleModalSubmit()}
+                            />
+                        ) : (
+                            <textarea
+                                value={modalInputValue}
+                                onChange={(e) => setModalInputValue(e.target.value)}
+                                rows={15}
+                                className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                                placeholder="Paste lyrics here..."
+                                autoFocus
+                            />
+                        )}
+                    </div>
+                    <div className="bg-gray-700 px-6 py-4 flex justify-end gap-4 rounded-b-lg">
+                        <button onClick={handleModalClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                            Cancel
+                        </button>
+                        <button onClick={handleModalSubmit} className="bg-blue-500 hover:bg-blue-400 text-white font-bold py-2 px-4 rounded transition-colors">
+                            {modalConfig.submitText}
+                        </button>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
