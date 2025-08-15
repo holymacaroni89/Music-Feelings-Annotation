@@ -32,31 +32,25 @@ To keep `App.tsx` lean and maintain separation of concerns, all business logic i
 -   **`hooks/useAudioEngine.ts`**: Manages all aspects of the Web Audio API.
     -   **Responsibilities**: Creating the `AudioContext`, decoding audio files, managing playback state (`isPlaying`, `currentTime`), controlling volume, and generating the spectral waveform data from the `AudioBuffer`.
 -   **`hooks/useAnnotationSystem.ts`**: The "brain" of the application.
-    -   **Responsibilities**: Managing the core application state related to annotations: `markers`, `profiles`, `lyrics`, and `selectedMarkerId`. It also manages all interactions with AI and third-party services, including triggering Gemini analysis, managing the Genius search flow, handling API key state, collecting training data, and initiating the training of the personal TensorFlow.js model.
+    -   **Responsibilities**: Managing the core application state related to annotations: `markers`, `profiles`, `songContext`, and `selectedMarkerId`. It also manages all interactions with AI and third-party services, including triggering Gemini analysis, managing the Genius search flow, handling API key state, collecting training data, and initiating the training of the personal TensorFlow.js model.
 
 ### 2.4. Data Persistence
 -   **`localStorage`** is used for all session data to ensure work is not lost on reload.
-    -   **`AUTOSAVE_KEY`**: Stores the main `AppState` (current track, markers, profiles, and API keys).
+    -   **`AUTOSAVE_KEY`**: Stores the main `AppState` (current track, markers, profiles, API keys, and song context data).
     -   **`TRAINING_DATA_PREFIX`**: Stores `TrainingSample[]` arrays, one for each user profile.
     -   **`MODEL_STORAGE_KEY_PREFIX`**: Stores the trained TensorFlow.js model, one for each user profile.
 
 ## 3. Feature Breakdown
 
 ### 3.1. Third-Party Services Integration
-#### Genius API for Lyrics and Metadata
+#### Genius API for Rich Song Context
 -   **Implementation**: `services/geniusService.ts`
--   **API Key Management**: The application does not ship with an API key. The user must provide their own "Client Access Token" from Genius.
-    -   A dedicated **Settings Modal** allows the user to input and save their API key.
-    -   The key is persisted in `localStorage` as part of the main `AppState`.
-    -   If the user attempts a search without a configured key, the Settings Modal is automatically opened to prompt them for it.
--   **Process**:
-    1.  The user initiates a search. The `useAnnotationSystem` hook retrieves the stored Genius API key.
-    2.  The application uses the track's title, artist, and the user's API key to query the Genius API search endpoint.
-    3.  The API returns a list of potential matches, which are displayed to the user in an interactive modal.
-    4.  Upon user selection, the application fetches the song's web page.
-    5.  It then parses the HTML of the page to extract the lyrics. This scraping method is necessary as the official Genius API does not provide lyrics directly.
-    6.  The extracted lyrics and corrected metadata (title, artist) are then populated into the application's state, providing crucial context for the main AI analysis.
--   **Technical Note on CORS**: Due to browser security policies (CORS), direct client-side requests to the Genius API are blocked. To circumvent this, all requests are routed through a public CORS proxy (`corsproxy.io`). This applies to both the API search requests and the HTML page scraping for lyrics.
+-   **API Key Management**: The user provides their own "Client Access Token" from Genius via a settings modal. The key is persisted in `localStorage`.
+-   **Two-Stage UI Workflow**: To maximize usability and data quality, the integration uses a two-stage modal.
+    1.  **Search & Select**: The user searches for a song. The app queries the Genius `/search` endpoint and displays a list of results.
+    2.  **Review & Confirm**: Upon selecting a result, the app makes multiple parallel requests: it calls the `/songs/:id` endpoint for metadata, scrapes the song's web page for raw lyrics, and critically, calls the `/referents` endpoint to retrieve all line-specific community annotations. It then displays a rich detail view containing all of this information.
+-   **Data Compilation**: The service programmatically merges the scraped lyrics with the community annotations, inserting each annotation directly after its corresponding line. Only after user confirmation are all the collected and merged details compiled into a single, formatted `songContext` string, which is then saved and associated with the current audio track.
+-   **Technical Note on CORS**: Due to browser security policies, all requests are routed through a public CORS proxy (`corsproxy.io`). This applies to both API calls and HTML page scraping.
 
 ### 3.2. AI Suggestion Engine (Two-Tier Model)
 This is the core innovation of the application. It combines a powerful general AI with a small, adaptive personal AI.
@@ -65,8 +59,8 @@ This is the core innovation of the application. It combines a powerful general A
 -   **Implementation**: `services/geminiService.ts`
 -   **Process**:
     1.  The audio waveform is summarized into a compact text format.
-    2.  This summary, along with lyrics fetched from Genius, is sent to the `gemini-2.5-flash` model.
-    3.  A detailed system prompt instructs the AI to act as an MIR/MER expert.
+    2.  This summary, along with the rich `songContext` string fetched from Genius (which now includes line-by-line annotations), is sent to the `gemini-2.5-flash` model.
+    3.  A detailed system prompt instructs the AI to act as an MIR/MER expert and to leverage all parts of the provided context (metadata, general annotations, lyrics, and line-specific interpretations) for a deeper analysis.
     4.  A strict `responseSchema` is used to guarantee the output is a valid JSON containing a list of `MerSuggestion` objects.
 -   **Output**: A rich set of suggestions including `time`, `valence`, `arousal`, `intensity`, `confidence`, a `reason` for the suggestion, and predictions for `gems`, `trigger`, and `sync_notes`.
 
@@ -80,12 +74,14 @@ This is the core innovation of the application. It combines a powerful general A
 ## 4. Development History
 
 The application was developed iteratively, building features in logical stages:
-1.  **Stage 1: Foundation**: The basic UI for profiles was created, and the AI was initially represented by a *simulated* model that generated plausible but random suggestions.
-2.  **Stage 2: Data Collection**: The logic was implemented to capture the user's annotations and store them as training data for their active profile.
-3.  **Stage 3: Personalization**: TensorFlow.js was integrated. The "Refine Profile" feature was built to train and apply the personal model, completing the two-tier AI architecture.
-4.  **Stage 4: Real AI Integration**: The simulated AI was replaced with a real-time call to the Google Gemini API, dramatically improving the quality of the base suggestions.
-5.  **Stage 5: Lyrics & Metadata Automation**: Integrated the Genius API to allow users to search for and automatically import lyrics and song metadata. This included building a robust, user-friendly system for managing the required API key.
-6.  **Follow-up Enhancements**:
+1.  **Stage 1: Foundation**: The basic UI for profiles was created, and the AI was initially represented by a *simulated* model.
+2.  **Stage 2: Data Collection**: Logic implemented to capture and store user annotations as training data.
+3.  **Stage 3: Personalization**: TensorFlow.js integrated to train and apply the personal model, completing the two-tier AI architecture.
+4.  **Stage 4: Real AI Integration**: The simulated AI was replaced with a real-time call to the Google Gemini API.
+5.  **Stage 5: Lyrics & Metadata Automation**: Integrated the Genius API to allow users to search for and automatically import lyrics and song metadata.
+6.  **Stage 6: Advanced Genius Integration & UX Overhaul**: Refactored the Genius feature into a robust, two-stage (search -> review/confirm) workflow. This involved new API calls (`/songs/:id`) and a major UI update to display rich metadata and community annotations, significantly improving the context provided to the Gemini model.
+7.  **Stage 7: Line-by-Line Annotation Fetching**: Enhanced the Genius service to query the `/referents` API endpoint, allowing the tool to fetch and merge detailed community annotations directly into the song lyrics for the ultimate level of AI context.
+8.  **Follow-up Enhancements**:
     -   Replaced blocking `prompt()` dialogs with a non-blocking `Modal` component.
     -   Fixed numerous UI/UX bugs in the `Timeline` component.
     -   Performed a major refactoring from a monolithic `App.tsx` into a clean, component- and hook-based architecture.

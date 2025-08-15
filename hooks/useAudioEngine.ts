@@ -1,48 +1,74 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import * as tf from '@tensorflow/tfjs';
 import { WaveformPoint } from '../types';
 
-const generateSpectralWaveformData = async (audioBuffer: AudioBuffer, targetPoints: number = 2000): Promise<WaveformPoint[]> => {
+const generateAdvancedWaveformData = async (audioBuffer: AudioBuffer, targetPoints: number = 2000): Promise<WaveformPoint[]> => {
     return new Promise(resolve => {
-        // This can be a lengthy process, so we run it in a timeout to allow the UI to update first.
-        setTimeout(() => {
+        setTimeout(async () => {
             const rawData = audioBuffer.getChannelData(0);
             const totalSamples = rawData.length;
-            const samplesPerPoint = Math.floor(totalSamples / targetPoints);
-            const waveformData: { amp: number; zcr: number }[] = [];
-            let maxZcr = 0;
+            const sampleRate = audioBuffer.sampleRate;
 
-            for (let i = 0; i < targetPoints; i++) {
-                const startIndex = i * samplesPerPoint;
-                const endIndex = Math.min(startIndex + samplesPerPoint, totalSamples);
-                let peak = 0;
-                let zeroCrossings = 0;
+            const fftSize = 2048;
+            const hopLength = 512;
+            const numFrames = Math.floor((totalSamples - fftSize) / hopLength) + 1;
 
-                for (let j = startIndex; j < endIndex; j++) {
-                    const sample = rawData[j];
-                    if (Math.abs(sample) > peak) {
-                        peak = Math.abs(sample);
-                    }
-                    if (j > startIndex) {
-                        if (Math.sign(rawData[j]) !== Math.sign(rawData[j - 1])) {
-                            zeroCrossings++;
-                        }
-                    }
-                }
+            const waveformData: WaveformPoint[] = [];
+
+            await tf.tidy(() => {
+                const audioTensor = tf.tensor1d(rawData);
+                const stft = tf.signal.stft(audioTensor, fftSize, hopLength);
+                const mags = tf.abs(stft);
+
+                // Calculate Spectral Centroid
+                const freqs = tf.linspace(0, sampleRate / 2, mags.shape[1]);
+                const weightedFreqs = mags.mul(freqs);
+                const sumWeightedFreqs = weightedFreqs.sum(1);
+                const sumMags = mags.sum(1).add(1e-6); // add epsilon to avoid div by zero
+                const centroids = sumWeightedFreqs.div(sumMags);
+                const normalizedCentroids = centroids.div(sampleRate / 2);
+
+                // Calculate Spectral Flux
+                const magsPadded = tf.pad(mags, [[1, 0], [0, 0]]); // Pad start with zeros for first frame
+                const magsDiff = mags.sub(magsPadded.slice([0, 0], [mags.shape[0], mags.shape[1]]));
+                const flux = tf.sqrt(tf.sum(tf.square(tf.relu(magsDiff)), 1));
                 
-                const zcr = samplesPerPoint > 0 ? zeroCrossings / samplesPerPoint : 0;
-                waveformData.push({ amp: peak, zcr });
+                // Get JS arrays from tensors
+                const centroidsArray = Array.from(normalizedCentroids.dataSync());
+                const fluxArray = Array.from(flux.dataSync());
+                
+                // Normalize flux
+                const maxFlux = Math.max(...fluxArray);
+                const normalizedFluxArray = maxFlux > 0 ? fluxArray.map(f => f / maxFlux) : fluxArray;
 
-                if (zcr > maxZcr) {
-                    maxZcr = zcr;
+                // Create waveform points, including amplitude
+                for (let i = 0; i < numFrames; i++) {
+                    const startIndex = i * hopLength;
+                    const endIndex = startIndex + hopLength;
+                    let peak = 0;
+                    for (let j = startIndex; j < endIndex; j++) {
+                        peak = Math.max(peak, Math.abs(rawData[j]));
+                    }
+                    waveformData.push({
+                        amp: peak,
+                        spectralCentroid: centroidsArray[i],
+                        spectralFlux: normalizedFluxArray[i],
+                    });
                 }
-            }
-            
-            const finalWaveform: WaveformPoint[] = waveformData.map(data => ({
-                amp: data.amp,
-                colorValue: maxZcr > 0 ? data.zcr / maxZcr : 0,
-            }));
-            
-            resolve(finalWaveform);
+
+                // Downsample to targetPoints if necessary
+                if (waveformData.length > targetPoints) {
+                    const finalWaveform: WaveformPoint[] = [];
+                    const step = waveformData.length / targetPoints;
+                    for (let i = 0; i < targetPoints; i++) {
+                        const index = Math.floor(i * step);
+                        finalWaveform.push(waveformData[index]);
+                    }
+                    resolve(finalWaveform);
+                } else {
+                    resolve(waveformData);
+                }
+            });
         }, 50);
     });
 };
@@ -160,8 +186,8 @@ export const useAudioEngine = () => {
     };
 
     const generateWaveform = useCallback(async (buffer: AudioBuffer, detail: number) => {
-        const spectralWaveform = await generateSpectralWaveformData(buffer, detail);
-        setWaveform(spectralWaveform);
+        const advancedWaveform = await generateAdvancedWaveformData(buffer, detail);
+        setWaveform(advancedWaveform);
     }, []);
     
     const scrub = useCallback((time: number) => {

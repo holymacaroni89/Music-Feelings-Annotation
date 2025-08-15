@@ -111,23 +111,26 @@ const Timeline: React.FC<TimelineProps> = ({
                 let saturation = 80;
                 let lightness = 60;
 
+                // Use spectralCentroid for color mapping
+                const colorValue = point.spectralCentroid;
+
                 switch (colorPalette) {
                     case 'spectral':
-                        hue = 300 * (1 - point.colorValue);
+                        hue = 300 * (1 - colorValue);
                         break;
                     case 'thermal':
-                        hue = 60 * point.colorValue;
-                        lightness = 40 + point.colorValue * 50;
+                        hue = 60 * colorValue;
+                        lightness = 40 + colorValue * 50;
                         saturation = 90;
                         break;
                     case 'grayscale':
                         hue = 0;
                         saturation = 0;
-                        lightness = 30 + point.colorValue * 60;
+                        lightness = 30 + colorValue * 60;
                         break;
                     case 'vibrant':
                     default:
-                        hue = 240 - (point.colorValue * 200);
+                        hue = 240 - (colorValue * 200);
                         break;
                 }
                 ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.7)`;

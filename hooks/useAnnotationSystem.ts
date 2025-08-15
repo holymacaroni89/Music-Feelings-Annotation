@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import * as tf from '@tensorflow/tfjs';
-import { Marker, AppState, TrackInfo, MerSuggestion, TrainingSample, Profile, GEMS, Trigger, GeniusSong } from '../types';
+import { Marker, AppState, TrackInfo, MerSuggestion, TrainingSample, Profile, GEMS, Trigger, GeniusSong, GeniusSongDetails } from '../types';
 import { AUTOSAVE_KEY, MARKER_DEFAULT_DURATION_S } from '../constants';
 import * as trainingService from '../services/trainingService';
 import * as mlService from '../services/mlService';
@@ -18,12 +18,14 @@ interface ModalConfig {
     submitText: string;
 }
 
-export type GeniusSearchStatus = 'idle' | 'searching' | 'results' | 'fetching' | 'error';
+export type GeniusSearchStatus = 'idle' | 'searching' | 'results' | 'fetchingDetails' | 'details' | 'error';
 
 export interface GeniusSearchState {
     status: GeniusSearchStatus;
     results: GeniusSong[];
+    detailedSong: GeniusSongDetails | null;
     error: string | null;
+    rawGeniusData?: { song: any; referents: any; };
 }
 
 export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
@@ -31,7 +33,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
     const [pendingMarkerStart, setPendingMarkerStart] = useState<number | null>(null);
     const [merSuggestions, setMerSuggestions] = useState<MerSuggestion[]>([]);
-    const [lyrics, setLyrics] = useState('');
+    const [songContext, setSongContext] = useState<{ [trackLocalId: string]: string }>({});
 
     // Profile & AI State
     const [profiles, setProfiles] = useState<Profile[]>([{ id: 'default', name: 'Default Profile' }]);
@@ -45,7 +47,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
     const [modalInputValue, setModalInputValue] = useState('');
     const [isDirty, setIsDirty] = useState(false);
-    const [geniusSearchState, setGeniusSearchState] = useState<GeniusSearchState>({ status: 'idle', results: [], error: null });
+    const [geniusSearchState, setGeniusSearchState] = useState<GeniusSearchState>({ status: 'idle', results: [], detailedSong: null, error: null });
 
     // --- Autosave & Initialization ---
     useEffect(() => {
@@ -62,12 +64,14 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
                     setGeniusApiKey(savedState.geniusApiKey);
                     keyFound = true;
                 }
+                if (savedState.songContext) {
+                    setSongContext(savedState.songContext);
+                }
             }
         } catch (e) {
             console.error("Failed to parse saved state:", e);
         }
         
-        // If no key was found in storage, use the default one.
         if (!keyFound) {
             setGeniusApiKey(GENIUS_API_KEY_DEFAULT);
         }
@@ -83,13 +87,11 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
                 } else {
                     // New track, reset everything
                     setMarkers([]);
-                    setLyrics('');
                     setMerSuggestions([]);
                 }
             }
         } else {
             setMarkers([]);
-            setLyrics('');
             setMerSuggestions([]);
         }
     }, [trackInfo]);
@@ -105,13 +107,14 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
                     profiles: profiles,
                     activeProfileId: activeProfileId,
                     geniusApiKey: geniusApiKey,
+                    songContext: songContext,
                 };
                 localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(stateToSave));
                 setIsDirty(false);
             }
         }, 1000);
         return () => clearTimeout(handler);
-    }, [isDirty, markers, trackInfo, profiles, activeProfileId, geniusApiKey]);
+    }, [isDirty, markers, trackInfo, profiles, activeProfileId, geniusApiKey, songContext]);
 
 
     // --- AI & Training Data ---
@@ -146,7 +149,8 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     }, [activeProfileId]);
     
     const analyzeEmotions = async (waveform: any, duration: number) => {
-        const baseSuggestions = await geminiService.generateMerSuggestions(waveform, duration, lyrics);
+        const currentContext = trackInfo ? songContext[trackInfo.localId] : undefined;
+        const baseSuggestions = await geminiService.generateMerSuggestions(waveform, duration, currentContext);
         if (personalModel) {
             const refinedSuggestions = mlService.predict(personalModel, baseSuggestions);
             setMerSuggestions(refinedSuggestions);
@@ -236,7 +240,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
             confidence: parseFloat(suggestion.confidence.toFixed(2)),
             gems: suggestion.gems,
             trigger: suggestion.trigger,
-            imagery: suggestion.reason, 
+            imagery: suggestion.imagery, 
             sync_notes: suggestion.sync_notes,
         };
 
@@ -252,35 +256,70 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
         if (!geniusApiKey) {
             setModalInputValue('');
             setModalConfig({ type: 'API_KEYS', title: 'Genius API Key Required', submitText: 'Save Key' });
-            setGeniusSearchState({ status: 'error', results: [], error: 'Please enter your Genius API Key.' });
+            setGeniusSearchState({ status: 'error', results: [], detailedSong: null, error: 'Please enter your Genius API Key.' });
             return;
         }
 
-        setGeniusSearchState({ status: 'searching', results: [], error: null });
+        setGeniusSearchState({ status: 'searching', results: [], detailedSong: null, error: null });
         try {
             const results = await geniusService.searchSongs(query, geniusApiKey);
-            setGeniusSearchState({ status: 'results', results, error: null });
+            setGeniusSearchState({ status: 'results', results, detailedSong: null, error: null });
         } catch (e) {
             const message = e instanceof Error && e.message.includes('401') 
                 ? 'Authentication failed. Please check if your API key is correct.' 
                 : 'Failed to fetch search results. Please check the console for details.';
-            setGeniusSearchState({ status: 'error', results: [], error: message });
+            setGeniusSearchState({ status: 'error', results: [], detailedSong: null, error: message });
         }
     }, [geniusApiKey]);
 
-    const fetchLyricsAndMetadata = useCallback(async (song: GeniusSong) => {
-        setGeniusSearchState(s => ({ ...s, status: 'fetching' }));
-        const lyrics = await geniusService.getLyrics(song.url);
-        if (lyrics) {
-            return {
-                lyrics,
-                metadata: { title: song.title, artist: song.artist },
-            };
+    const selectGeniusSong = useCallback(async (song: GeniusSong) => {
+        setGeniusSearchState(s => ({ ...s, status: 'fetchingDetails' }));
+        const result = await geniusService.getSongDetails(song, geniusApiKey);
+        if (result) {
+            setGeniusSearchState(s => ({ ...s, status: 'details', detailedSong: result.details, rawGeniusData: result.raw }));
         } else {
-            setGeniusSearchState(s => ({ ...s, status: 'error', error: 'Could not extract lyrics from the page.' }));
-            return null;
+            setGeniusSearchState(s => ({ ...s, status: 'error', error: 'Could not fetch song details from Genius.' }));
         }
-    }, []);
+    }, [geniusApiKey]);
+    
+    const confirmGeniusSelection = useCallback((details: GeniusSongDetails) => {
+        if (!trackInfo) return { title: '', artist: '' };
+        
+        const contextParts = [
+            `Title: ${details.title}`,
+            `Artist: ${details.artist}`,
+        ];
+        if (details.album) contextParts.push(`Album: ${details.album}`);
+        if (details.releaseDate) contextParts.push(`Release Date: ${details.releaseDate}`);
+        if (details.descriptionHtml) {
+             const tempDiv = document.createElement("div");
+             tempDiv.innerHTML = details.descriptionHtml;
+             const descriptionText = tempDiv.textContent || tempDiv.innerText || "";
+             contextParts.push(`\n--- About The Song ---\n${descriptionText.trim()}`);
+        }
+        if (details.lyrics) {
+            contextParts.push(`\n--- Lyrics ---\n${details.lyrics}`);
+        }
+        
+        const newContext = contextParts.join('\n');
+        
+        setSongContext(prev => ({ ...prev, [trackInfo.localId]: newContext }));
+        
+        // This will trigger an update in App.tsx
+        const updatedMetadata = { title: details.title, artist: details.artist };
+
+        setMerSuggestions([]); // Invalidate old suggestions
+        setIsDirty(true);
+        setModalConfig(null);
+        
+        return updatedMetadata;
+
+    }, [trackInfo]);
+    
+    const backToGeniusSearch = () => {
+        setGeniusSearchState(s => ({ ...s, status: 'results', detailedSong: null, error: null }));
+    };
+
 
     // --- Modal & Profile Management ---
     const openModal = (type: 'ADD_PROFILE' | 'SEARCH_GENIUS' | 'API_KEYS') => {
@@ -289,7 +328,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
             setModalConfig({ type, title: 'Create New Profile', submitText: 'Create' });
         } else if (type === 'SEARCH_GENIUS') {
             setModalConfig({ type, title: 'Find Lyrics on Genius', submitText: '' }); // Submit managed inside modal
-            const query = trackInfo ? `${trackInfo.title} ${trackInfo.artist}` : '';
+            const query = trackInfo ? trackInfo.title.replace(/ unknown artist/i, '').trim() : '';
             searchGenius(query);
         } else if (type === 'API_KEYS') {
             setModalInputValue(geniusApiKey);
@@ -298,8 +337,9 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     };
     
     const openManualLyricsModal = () => {
-        setModalInputValue(lyrics);
-        setModalConfig({ type: 'MANUAL_LYRICS', title: 'Add/Edit Lyrics Manually', submitText: 'Save Lyrics' });
+        const currentContext = trackInfo ? songContext[trackInfo.localId] || '' : '';
+        setModalInputValue(currentContext);
+        setModalConfig({ type: 'MANUAL_LYRICS', title: 'Add/Edit Song Context Manually', submitText: 'Save Context' });
     };
     
     const handleSaveGeniusApiKey = (key: string) => {
@@ -319,9 +359,10 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
                 setIsDirty(true);
             }
         } else if (modalConfig.type === 'MANUAL_LYRICS') {
-            if (lyrics !== modalInputValue) {
-                setLyrics(modalInputValue);
+            if (trackInfo && songContext[trackInfo.localId] !== modalInputValue) {
+                setSongContext(prev => ({ ...prev, [trackInfo.localId]: modalInputValue }));
                 setMerSuggestions([]); // Invalidate old suggestions
+                setIsDirty(true);
             }
         } else if (modalConfig.type === 'API_KEYS') {
              handleSaveGeniusApiKey(modalInputValue);
@@ -340,7 +381,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
         selectedMarkerId, setSelectedMarkerId,
         pendingMarkerStart, setPendingMarkerStart,
         merSuggestions,
-        lyrics, setLyrics,
+        songContext, setSongContext,
         profiles,
         activeProfileId, setActiveProfileId,
         trainingDataCount,
@@ -362,7 +403,9 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
         openManualLyricsModal,
         handleModalSubmit,
         searchGenius,
-        fetchLyricsAndMetadata,
+        selectGeniusSong,
+        confirmGeniusSelection,
+        backToGeniusSearch,
         MIN_TRAINING_SAMPLES,
     };
 };

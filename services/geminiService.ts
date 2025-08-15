@@ -19,12 +19,12 @@ const summarizeWaveform = (waveform: WaveformPoint[], duration: number, points: 
         
         const time = (i / points) * duration;
         
-        const avgAmp = chunk.reduce((sum, p) => sum + p.amp, 0) / chunk.length;
         const maxAmp = chunk.reduce((max, p) => Math.max(max, p.amp), 0);
-        const avgColor = chunk.reduce((sum, p) => sum + p.colorValue, 0) / chunk.length; // avg brightness
+        const avgCentroid = chunk.reduce((sum, p) => sum + p.spectralCentroid, 0) / chunk.length;
+        const maxFlux = chunk.reduce((max, p) => Math.max(max, p.spectralFlux), 0);
         
         summary.push(
-          `t:${time.toFixed(1)}s, amp_avg:${avgAmp.toFixed(3)}, amp_max:${maxAmp.toFixed(3)}, brightness:${avgColor.toFixed(3)}`
+          `t:${time.toFixed(1)}s, amp:${maxAmp.toFixed(3)}, centroid:${avgCentroid.toFixed(3)}, flux:${maxFlux.toFixed(3)}`
         );
     }
     
@@ -62,7 +62,7 @@ const suggestionSchema = {
                     },
                     reason: {
                         type: Type.STRING,
-                        description: "A very brief justification for why this moment was chosen (e.g., 'Sudden drop in brightness', 'Sustained high energy')."
+                        description: "A very brief justification for why this moment was chosen, based on audio features (e.g., 'Sudden peak in spectral flux', 'Sustained low centroid')."
                     },
                     gems: {
                         type: Type.STRING,
@@ -75,25 +75,54 @@ const suggestionSchema = {
                     },
                     sync_notes: {
                         type: Type.STRING,
-                        description: "Brief notes on the specific musical event at this exact timestamp (e.g., 'Vocal entry', 'Beat drop', 'Guitar solo starts')."
+                        description: "Brief, objective notes on the specific musical event (e.g., 'Vocal entry', 'Beat drop'). MUST be grounded in song structure or lyrics if available."
+                    },
+                    imagery: {
+                        type: Type.STRING,
+                        description: "A description of evoked imagery. MUST be directly inspired by and grounded in the specific lyrics or user annotations for this moment."
                     }
                 },
-                 required: ["time", "valence", "arousal", "intensity", "confidence", "reason", "gems", "trigger", "sync_notes"],
+                 required: ["time", "valence", "arousal", "intensity", "confidence", "reason", "gems", "trigger", "sync_notes", "imagery"],
             }
         }
     },
     required: ["suggestions"],
 };
 
-export const generateMerSuggestions = async (waveform: WaveformPoint[], duration: number, lyrics?: string): Promise<MerSuggestion[]> => {
+export const generateMerSuggestions = async (waveform: WaveformPoint[], duration: number, songContext?: string): Promise<MerSuggestion[]> => {
     const summarizedData = summarizeWaveform(waveform, duration);
     
-    const baseSystemInstruction = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your task is to analyze summarized audio waveform data and identify the most emotionally significant moments in a piece of music, providing a comprehensive annotation for each.
-The input data is a semicolon-separated list of summaries. Each summary represents a point in time and contains:
+    const systemInstructionWithContext = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your primary task is to create a tight synthesis between summarized audio waveform data and rich lyrical/annotative context to identify emotionally significant moments in a song.
+
+The audio data is a semicolon-separated list of summaries. Each summary contains:
 - t: The timestamp in seconds.
-- amp_avg: The average amplitude (volume).
-- amp_max: The maximum amplitude.
-- brightness: A value from 0.0 (deep, bassy sounds) to 1.0 (bright, high-frequency sounds).
+- amp: The maximum amplitude (volume) in that time slice.
+- centroid: The spectral centroid (0.0 for deep, bassy sounds; 1.0 for bright, high-frequency sounds).
+- flux: The spectral flux (0.0 for stable timbre; 1.0 for rapid timbral change). A high flux indicates a sudden sonic event.
+
+You are also provided with rich song context (metadata, lyrics, annotations). Your analysis MUST deeply integrate this context. Identify 5 to 15 key moments representing significant emotional shifts.
+
+For each moment, provide a full annotation with the following STRICT rules:
+1.  time: The timestamp in seconds.
+2.  valence: Estimated valence (-1 to +1).
+3.  arousal: Estimated arousal (0 to 1).
+4.  intensity: Perceived emotional impact (0-100). Differentiated from arousal (e.g., quiet tension can be high intensity).
+5.  confidence: Your confidence (0.0 to 1.0) that this moment is emotionally significant based on BOTH audio and context.
+6.  reason: A very brief justification based on an audio feature (e.g., "Peak in spectral flux", "Shift to low centroid").
+7.  gems: The most likely GEMS category. Must be one of: ${Object.values(GEMS).join(', ')}.
+8.  trigger: An array of likely musical triggers. Must be a subset of: ${Object.values(Trigger).join(', ')}.
+9.  sync_notes: MUST be objective and directly reference the song structure or text at this timestamp. Examples: "Chorus begins", "Bridge starts with 'Now the night...'", "Vocal harmony enters".
+10. imagery: MUST be directly inspired by and grounded in the specific lyrics or user annotations at this moment. You should explicitly reference the lyrical content that justifies your imagery. Example: "A sense of quiet hope, reflecting the 'sunrise' metaphor in the lyrics."
+
+Your goal is to produce annotations where the audio analysis and the lyrical context are inextricably linked.`;
+
+    const systemInstructionWithoutContext = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your task is to analyze summarized audio waveform data and identify the most emotionally significant moments in a piece of music, providing a comprehensive annotation for each.
+
+The audio data is a semicolon-separated list of summaries. Each summary contains:
+- t: The timestamp in seconds.
+- amp: The maximum amplitude (volume) in that time slice.
+- centroid: The spectral centroid (0.0 for deep, bassy sounds; 1.0 for bright, high-frequency sounds). This indicates the sound's "brightness".
+- flux: The spectral flux (0.0 for stable timbre; 1.0 for rapid timbral change). A high flux indicates a sudden sonic event like a new instrument or a beat drop.
 
 Your goal is to identify 5 to 15 key moments that represent significant emotional shifts, peaks, or transitions.
 
@@ -101,21 +130,20 @@ For each moment you identify, provide a full annotation:
 - time: The timestamp in seconds.
 - valence: Estimated valence (-1 to +1).
 - arousal: Estimated arousal (0 to 1).
-- intensity: Integer from 0 to 100 for perceived emotional impact. This is different from arousal; a quiet, tense moment can have low arousal but high intensity.
+- intensity: Integer from 0 to 100 for perceived emotional impact.
 - confidence: Float from 0.0 to 1.0 indicating your confidence that this moment is emotionally significant.
-- reason: A very brief justification for your choice (e.g., "Sudden drop in brightness").
-- gems: The most likely GEMS (Geneva Emotional Music Scale) category. Choose exactly one from: ${Object.values(GEMS).join(', ')}.
-- trigger: An array of the most likely musical triggers. This must be a subset of: ${Object.values(Trigger).join(', ')}.
-- sync_notes: Brief, objective notes on the specific musical event at this exact timestamp (e.g., 'Vocal entry', 'Beat drop', 'Guitar solo starts').`;
+- reason: A very brief justification for your choice based on audio features (e.g., "Peak in spectral flux", "Shift to low centroid").
+- gems: The most likely GEMS category. Must be one of: ${Object.values(GEMS).join(', ')}.
+- trigger: An array of the most likely musical triggers. Must be a subset of: ${Object.values(Trigger).join(', ')}.
+- sync_notes: Brief, objective notes on the specific musical event at this exact timestamp (e.g., 'Vocal entry', 'Beat drop', 'Guitar solo starts').
+- imagery: A brief description of any images or feelings evoked by the sound at this moment.`;
+
+    const systemInstruction = songContext ? systemInstructionWithContext : systemInstructionWithoutContext;
     
-    const lyricsContextInstruction = "\n\nYou will also be provided with the song's lyrics for additional context. Use the overall mood and themes of the lyrics to inform your emotional analysis of the audio data. Correlate changes in the audio data with the lyrical content.";
+    let promptContent = `Here is the summarized audio data for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments and provide full annotations.\n\nAUDIO DATA: ${summarizedData}`;
     
-    const systemInstruction = baseSystemInstruction + (lyrics ? lyricsContextInstruction : '');
-    
-    let promptContent = `Here is the summarized audio data for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments and provide full annotations.\n\nDATA: ${summarizedData}`;
-    
-    if (lyrics) {
-        promptContent = `Here is the summarized audio data and lyrics for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments and provide full annotations, using the lyrics as context.\n\nLYRICS:\n${lyrics}\n\nDATA: ${summarizedData}`;
+    if (songContext) {
+        promptContent = `Analyze the following song based on its audio data and the provided context. The track is ${duration.toFixed(0)} seconds long. Identify key emotional moments and provide full annotations.\n\n--- SONG CONTEXT ---\n${songContext}\n\n--- AUDIO DATA ---\n${summarizedData}`;
     }
 
     try {
@@ -151,6 +179,7 @@ For each moment you identify, provide a full annotation:
                         gems: parsedGems,
                         trigger: parsedTriggers,
                         sync_notes: s.sync_notes || '',
+                        imagery: s.imagery || '',
                     };
                 })
                 .filter((s: MerSuggestion) => s.time <= duration && s.time >= 0);

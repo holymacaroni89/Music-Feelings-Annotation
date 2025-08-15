@@ -47,7 +47,8 @@ export interface TrackInfo {
 
 export interface WaveformPoint {
   amp: number;
-  colorValue: number; // 0 (dark/bass) to 1 (bright/treble)
+  spectralCentroid: number; // Normalized 0-1, represents brightness
+  spectralFlux: number;     // Normalized 0-1, represents timbral change
 }
 
 export type ColorPalette = 'vibrant' | 'spectral' | 'thermal' | 'grayscale';
@@ -67,6 +68,7 @@ export interface MerSuggestion {
   gems: GEMS | '';
   trigger: Trigger[];
   sync_notes: string;
+  imagery: string;
 }
 
 export interface TrainingSample {
@@ -89,6 +91,8 @@ export interface AppState {
     activeProfileId: string | null;
     // API Keys
     geniusApiKey?: string;
+    // AI Context
+    songContext: { [trackLocalId: string]: string };
 }
 
 export interface GeniusHit {
@@ -103,10 +107,20 @@ export interface GeniusHit {
   }
 }
 
+// For search results
 export interface GeniusSong {
   id: number;
   url: string;
   title: string;
   artist: string;
   thumbnailUrl: string;
+}
+
+// For detailed view
+export interface GeniusSongDetails extends GeniusSong {
+    album: string | null;
+    releaseDate: string | null;
+    imageUrl: string;
+    descriptionHtml: string | null; // Community annotations
+    lyrics: string | null;
 }

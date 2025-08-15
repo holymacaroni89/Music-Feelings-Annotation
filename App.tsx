@@ -5,7 +5,7 @@ import Workspace from './components/Workspace';
 import Footer from './components/Footer';
 import LabelPanel from './components/LabelPanel';
 import Modal from './components/Modal';
-import { Marker, TrackInfo, ColorPalette, GeniusSong } from './types';
+import { Marker, TrackInfo, ColorPalette, GeniusSong, GeniusSongDetails } from './types';
 import { exportToCsv, importFromCsv } from './services/csvService';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useAnnotationSystem, GeniusSearchState } from './hooks/useAnnotationSystem';
@@ -21,103 +21,181 @@ const stringToHash = (str: string): string => {
     return hash.toString();
 };
 
+const cleanFileName = (fileName: string): { title: string, artist: string } => {
+    // Remove extension
+    let baseName = fileName.split('.').slice(0, -1).join('.');
+    // Common separators: -, –, —
+    const parts = baseName.split(/ - | – | — /);
+    if (parts.length > 1) {
+        return { artist: parts[0].trim(), title: parts.slice(1).join(' ').trim() };
+    }
+    return { title: baseName, artist: 'Unknown Artist' };
+};
+
 
 // --- Genius Search Modal Component ---
 interface GeniusSearchModalProps {
-    trackInfo: TrackInfo;
+    initialQuery: string;
     geniusSearchState: GeniusSearchState;
     searchGenius: (query: string) => void;
-    fetchLyricsAndMetadata: (song: GeniusSong) => Promise<{ lyrics: string; metadata: { title: string; artist: string; } } | null>;
-    onLyricsUpdate: (lyrics: string) => void;
+    selectSong: (song: GeniusSong) => void;
+    confirmSelection: (details: GeniusSongDetails) => { title: string, artist: string };
+    backToSearch: () => void;
     onTrackInfoUpdate: (metadata: { title: string; artist: string; }) => void;
     onSwitchToManual: () => void;
+    onViewRawJson: () => void;
     onClose: () => void;
 }
 
 const GeniusSearchModal: React.FC<GeniusSearchModalProps> = ({
-    trackInfo, geniusSearchState, searchGenius, fetchLyricsAndMetadata, 
-    onLyricsUpdate, onTrackInfoUpdate, onSwitchToManual, onClose
+    initialQuery, geniusSearchState, searchGenius, selectSong, confirmSelection,
+    backToSearch, onTrackInfoUpdate, onSwitchToManual, onViewRawJson, onClose
 }) => {
-    const [query, setQuery] = useState(`${trackInfo.title} ${trackInfo.artist}`);
+    const [query, setQuery] = useState(initialQuery);
+    
+    useEffect(() => {
+        setQuery(initialQuery);
+    }, [initialQuery]);
     
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         searchGenius(query);
     };
 
-    const handleSelectSong = async (song: GeniusSong) => {
-        const result = await fetchLyricsAndMetadata(song);
-        if (result) {
-            onLyricsUpdate(result.lyrics);
-            onTrackInfoUpdate(result.metadata);
-            onClose();
-        }
+    const handleConfirm = (details: GeniusSongDetails) => {
+        const updatedMetadata = confirmSelection(details);
+        onTrackInfoUpdate(updatedMetadata);
+        onClose();
     };
+    
+    const renderContent = () => {
+        const { status, results, detailedSong, error } = geniusSearchState;
 
-    return (
-        <>
-            <div className="p-6">
-                 <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <h3 className="text-xl font-bold text-gray-100">Find Lyrics on Genius</h3>
-                        <p className="text-sm text-gray-400">Accurate lyrics provide crucial context for the AI analysis.</p>
-                    </div>
-                   <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
-                       <XIcon />
-                   </button>
+        if (status === 'fetchingDetails') {
+             return (
+                <div className="flex justify-center items-center h-full p-16">
+                    <SpinnerIcon />
                 </div>
+            );
+        }
 
-                <form onSubmit={handleSearch} className="flex gap-2 mb-4">
-                    <input
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        className="flex-grow bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Enter song title and artist..."
-                        autoFocus
-                    />
-                    <button type="submit" className="bg-blue-500 hover:bg-blue-400 text-white font-bold p-2 rounded transition-colors flex items-center justify-center w-12" disabled={geniusSearchState.status === 'searching'}>
-                        {geniusSearchState.status === 'searching' ? <SpinnerIcon /> : <SearchIcon />}
-                    </button>
-                </form>
-
-                <div className="h-64 overflow-y-auto pr-2">
-                    {geniusSearchState.status === 'results' && geniusSearchState.results.length === 0 && (
-                         <div className="text-center text-gray-500 pt-8">No results found. Try a different search query.</div>
-                    )}
-                     {geniusSearchState.status === 'error' && (
-                         <div className="text-center text-red-400 pt-8">{geniusSearchState.error}</div>
-                    )}
-                    {(geniusSearchState.status === 'searching' || geniusSearchState.status === 'fetching') && (
-                        <div className="flex justify-center items-center h-full">
-                            <SpinnerIcon />
+        if (status === 'details' && detailedSong) {
+            return (
+                <div className="flex flex-col max-h-[70vh]">
+                    <div className="p-6 flex-grow overflow-y-auto">
+                        <div className="flex items-start gap-4">
+                           <img src={detailedSong.imageUrl} alt="Album art" className="w-32 h-32 rounded-lg object-cover flex-shrink-0" />
+                           <div className="flex-grow">
+                                <h4 className="text-2xl font-bold text-white">{detailedSong.title}</h4>
+                                <p className="text-lg text-gray-300">{detailedSong.artist}</p>
+                                {detailedSong.album && <p className="text-sm text-gray-400 mt-1">Album: {detailedSong.album}</p>}
+                                {detailedSong.releaseDate && <p className="text-sm text-gray-400">Released: {detailedSong.releaseDate}</p>}
+                           </div>
                         </div>
-                    )}
-                    {geniusSearchState.status === 'results' && geniusSearchState.results.length > 0 && (
-                        <ul className="space-y-2">
-                            {geniusSearchState.results.map(song => (
-                                <li key={song.id} onClick={() => handleSelectSong(song)} className="flex items-center gap-4 p-2 rounded-md hover:bg-gray-700 cursor-pointer transition-colors">
-                                    <img src={song.thumbnailUrl} alt="Album art" className="w-12 h-12 rounded-md object-cover flex-shrink-0" />
-                                    <div className="min-w-0">
-                                        <p className="text-white font-semibold truncate">{song.title}</p>
-                                        <p className="text-gray-400 text-sm truncate">{song.artist}</p>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+                        
+                        {detailedSong.descriptionHtml && (
+                            <div className="mt-4">
+                                <h5 className="font-bold text-gray-200 mb-2 border-b border-gray-700 pb-1">About "{detailedSong.title}"</h5>
+                                <div className="prose prose-sm prose-invert text-gray-300 max-w-none" dangerouslySetInnerHTML={{ __html: detailedSong.descriptionHtml }} />
+                            </div>
+                        )}
+
+                        {detailedSong.lyrics && (
+                            <div className="mt-4">
+                                <h5 className="font-bold text-gray-200 mb-2 border-b border-gray-700 pb-1">Lyrics</h5>
+                                <p className="whitespace-pre-wrap text-gray-300 text-sm font-mono">{detailedSong.lyrics}</p>
+                            </div>
+                        )}
+                         {!detailedSong.lyrics && <p className="mt-4 text-gray-500">Lyrics could not be found for this song.</p>}
+                    </div>
+                    <div className="bg-gray-700 px-6 py-4 flex justify-between items-center rounded-b-lg flex-shrink-0">
+                        <div className="flex gap-4">
+                            <button onClick={backToSearch} className="text-sm text-blue-400 hover:underline">
+                               ← Back to Search Results
+                            </button>
+                             <button onClick={onViewRawJson} className="text-sm text-gray-400 hover:underline">
+                                View Raw JSON
+                             </button>
+                        </div>
+                        <button onClick={() => handleConfirm(detailedSong)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                            Use This Data for AI Analysis
+                        </button>
+                    </div>
                 </div>
+            );
+        }
+
+        return (
+            <>
+                <div className="p-6">
+                    <form onSubmit={handleSearch} className="flex gap-2 mb-4">
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            className="flex-grow bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Enter song title and artist..."
+                            autoFocus
+                            disabled={status === 'searching'}
+                        />
+                        <button type="submit" className="bg-blue-500 hover:bg-blue-400 text-white font-bold p-2 rounded transition-colors flex items-center justify-center w-12" disabled={status === 'searching'}>
+                            {status === 'searching' ? <SpinnerIcon /> : <SearchIcon />}
+                        </button>
+                    </form>
+
+                    <div className="h-64 overflow-y-auto pr-2">
+                        {status === 'searching' && (
+                             <div className="flex justify-center items-center h-full pt-8">
+                                <SpinnerIcon />
+                             </div>
+                        )}
+                        {status === 'results' && results.length === 0 && (
+                             <div className="text-center text-gray-500 pt-8">No results found. Try a different search query.</div>
+                        )}
+                         {status === 'error' && (
+                             <div className="text-center text-red-400 pt-8">{error}</div>
+                        )}
+                        {status === 'results' && results.length > 0 && (
+                            <ul className="space-y-2">
+                                {results.map(song => (
+                                    <li key={song.id} onClick={() => selectSong(song)} className="flex items-center gap-4 p-2 rounded-md hover:bg-gray-700 cursor-pointer transition-colors">
+                                        <img src={song.thumbnailUrl} alt="Album art" className="w-12 h-12 rounded-md object-cover flex-shrink-0" />
+                                        <div className="min-w-0">
+                                            <p className="text-white font-semibold truncate">{song.title}</p>
+                                            <p className="text-gray-400 text-sm truncate">{song.artist}</p>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </div>
+                 <div className="bg-gray-700 px-6 py-4 flex justify-between items-center rounded-b-lg">
+                    <button onClick={onSwitchToManual} className="text-sm text-blue-400 hover:underline">
+                        Enter Context Manually
+                    </button>
+                    <button onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </>
+        );
+    };
+    
+     return (
+        <>
+            <div className="flex justify-between items-start p-6 pb-0 mb-4">
+                <div>
+                    <h3 className="text-xl font-bold text-gray-100">Find Song Info on Genius</h3>
+                    <p className="text-sm text-gray-400 max-w-md">Accurate metadata and lyrics provide crucial context for the AI analysis.</p>
+                </div>
+               <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                   <XIcon />
+               </button>
             </div>
-            <div className="bg-gray-700 px-6 py-4 flex justify-between items-center rounded-b-lg">
-                <button onClick={onSwitchToManual} className="text-sm text-blue-400 hover:underline">
-                    Enter Lyrics Manually
-                </button>
-                <button onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors">
-                    Cancel
-                </button>
-            </div>
+            {renderContent()}
         </>
-    )
+    );
 };
 
 
@@ -126,6 +204,7 @@ const App: React.FC = () => {
     const [trackInfo, setTrackInfo] = useState<TrackInfo | null>(null);
     const [zoom, setZoom] = useState(20);
     const [warnings, setWarnings] = useState<string[]>([]);
+    const [showDebugModal, setShowDebugModal] = useState(false);
 
     // Visualization Settings
     const [showSettings, setShowSettings] = useState(false);
@@ -145,10 +224,11 @@ const App: React.FC = () => {
 
     const {
         markers, setMarkers, selectedMarkerId, setSelectedMarkerId, pendingMarkerStart,
-        setPendingMarkerStart, merSuggestions, setLyrics, profiles, activeProfileId, setActiveProfileId,
+        setPendingMarkerStart, merSuggestions, songContext, setSongContext, profiles, activeProfileId, setActiveProfileId,
         trainingDataCount, trainingStatus, modalConfig, setModalConfig, modalInputValue, setModalInputValue, setIsDirty,
         updateMarker, deleteMarker, handleMarkerCreationToggle, handleSuggestionClick, analyzeEmotions,
-        refineProfile, openModal, openManualLyricsModal, handleModalSubmit, MIN_TRAINING_SAMPLES, geniusSearchState, searchGenius, fetchLyricsAndMetadata
+        refineProfile, openModal, openManualLyricsModal, handleModalSubmit, MIN_TRAINING_SAMPLES, geniusSearchState, 
+        searchGenius, selectGeniusSong, confirmGeniusSelection, backToGeniusSearch
     } = useAnnotationSystem(trackInfo);
     
     // Effect to generate waveform when audio buffer is ready or detail level changes
@@ -180,12 +260,13 @@ const App: React.FC = () => {
             const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
             
             const localId = `${stringToHash(file.name)}-${file.size}`;
+            const { title, artist } = cleanFileName(file.name);
             const newTrackInfo: TrackInfo = {
                 localId,
                 name: file.name,
                 duration_s: decodedBuffer.duration,
-                title: file.name.split('.').slice(0, -1).join('.'),
-                artist: 'Unknown Artist',
+                title,
+                artist,
             };
 
             setTrackInfo(newTrackInfo);
@@ -241,7 +322,7 @@ const App: React.FC = () => {
 
     // --- Keyboard Shortcuts ---
     const handleKeyboardShortcuts = useCallback((e: KeyboardEvent) => {
-        if ((e.target as HTMLElement).tagName.match(/INPUT|TEXTAREA|SELECT/) || !!modalConfig) return;
+        if ((e.target as HTMLElement).tagName.match(/INPUT|TEXTAREA|SELECT/) || !!modalConfig || showDebugModal) return;
         
         switch(e.code) {
             case 'Space': e.preventDefault(); togglePlayPause(); break;
@@ -255,7 +336,7 @@ const App: React.FC = () => {
             case 'ArrowRight': e.preventDefault(); scrub(currentTime + (e.shiftKey ? 1 : 5)); break;
             case 'ArrowLeft': e.preventDefault(); scrub(currentTime - (e.shiftKey ? 1 : 5)); break;
         }
-    }, [togglePlayPause, handleMarkerCreationToggle, selectedMarkerId, deleteMarker, scrub, currentTime, pendingMarkerStart, modalConfig]);
+    }, [togglePlayPause, handleMarkerCreationToggle, selectedMarkerId, deleteMarker, scrub, currentTime, pendingMarkerStart, modalConfig, showDebugModal]);
     
     useEffect(() => {
         window.addEventListener('keydown', handleKeyboardShortcuts);
@@ -367,16 +448,18 @@ const App: React.FC = () => {
             />
             
             {modalConfig && (
-                <Modal onClose={() => setModalConfig(null)}>
+                <Modal onClose={() => setModalConfig(null)} size={modalConfig.type === 'SEARCH_GENIUS' ? 'lg' : 'md'}>
                      {modalConfig.type === 'SEARCH_GENIUS' && trackInfo ? (
                         <GeniusSearchModal 
-                            trackInfo={trackInfo}
+                            initialQuery={trackInfo.title.replace(/ unknown artist/i, '').trim()}
                             geniusSearchState={geniusSearchState}
                             searchGenius={searchGenius}
-                            fetchLyricsAndMetadata={fetchLyricsAndMetadata}
-                            onLyricsUpdate={setLyrics}
+                            selectSong={selectGeniusSong}
+                            confirmSelection={confirmGeniusSelection}
+                            backToSearch={backToGeniusSearch}
                             onTrackInfoUpdate={(meta) => setTrackInfo(ti => ti ? { ...ti, ...meta } : null)}
                             onSwitchToManual={openManualLyricsModal}
+                            onViewRawJson={() => setShowDebugModal(true)}
                             onClose={() => setModalConfig(null)}
                         />
                      ) : (
@@ -406,7 +489,7 @@ const App: React.FC = () => {
                                         onChange={(e) => setModalInputValue(e.target.value)}
                                         rows={15}
                                         className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                                        placeholder="Paste lyrics here..."
+                                        placeholder="Paste song context (lyrics, annotations, etc.) here..."
                                         autoFocus
                                     />
                                 )}
@@ -440,6 +523,33 @@ const App: React.FC = () => {
                         </>
                     )}
                 </Modal>
+            )}
+
+            {showDebugModal && geniusSearchState.rawGeniusData && (
+                 <Modal onClose={() => setShowDebugModal(false)} size="lg">
+                    <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                        <h3 className="text-lg font-bold text-gray-100">Raw Genius API Response</h3>
+                        <button onClick={() => setShowDebugModal(false)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                           <XIcon />
+                        </button>
+                    </div>
+                    <div className="p-4 overflow-auto max-h-[80vh]">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <h4 className="font-semibold text-gray-300 mb-2">/songs/:id Response</h4>
+                                <pre className="bg-gray-900 p-2 rounded text-xs text-gray-300 overflow-auto">
+                                    <code>{JSON.stringify(geniusSearchState.rawGeniusData.song, null, 2)}</code>
+                                </pre>
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-gray-300 mb-2">/referents Response</h4>
+                                 <pre className="bg-gray-900 p-2 rounded text-xs text-gray-300 overflow-auto">
+                                     <code>{JSON.stringify(geniusSearchState.rawGeniusData.referents, null, 2)}</code>
+                                 </pre>
+                            </div>
+                        </div>
+                    </div>
+                 </Modal>
             )}
         </div>
     );

@@ -6,8 +6,8 @@ This is a powerful, AI-assisted web application designed for annotating emotiona
 
 - **Advanced Audio Visualization**: Displays a spectral color waveform where color represents the sound's brightness (timbre) and height represents its amplitude, making it easy to spot sonic changes.
 - **Manual & AI-Assisted Annotation**: Create time-range markers manually with the 'M' key or get a head start by using AI-generated suggestions.
-- **AI Emotion Analysis (powered by Google Gemini)**: With the click of a button, the tool sends a summary of the track's audio features (and optional lyrics) to the Gemini AI model to get intelligent suggestions for emotionally significant moments.
-- **Lyrics & Metadata Integration (powered by Genius)**: Automatically search for and import song lyrics and metadata from Genius. Providing the AI with lyrical context dramatically improves the accuracy and depth of its emotional analysis.
+- **AI Emotion Analysis (powered by Google Gemini)**: With the click of a button, the tool sends a summary of the track's audio features (and optional song context) to the Gemini AI model to get intelligent suggestions for emotionally significant moments.
+- **Rich Song Context (powered by Genius)**: A powerful, two-step process allows you to search for a song on Genius, review its metadata, lyrics, and community annotations. The tool even fetches and integrates detailed, **line-by-line user annotations** to provide the deepest possible context to the AI.
 - **Personalized AI Model (powered by TensorFlow.js)**: The tool learns from your annotations! It uses your edits to train a small, personal machine learning model that refines the base AI's suggestions to better match your unique emotional perception.
 - **Multi-Profile System**: Create different user profiles, each with its own personal AI model. The AI's suggestions adapt to the active profile.
 - **Comprehensive Annotation Form**: Label markers with a rich set of attributes, including Valence, Arousal, Intensity, GEMS categories, and musical Triggers. Informative tooltips explain each field.
@@ -17,7 +17,7 @@ This is a powerful, AI-assisted web application designed for annotating emotiona
 ## Getting Started: A Typical Workflow
 
 ### One-Time Setup: Genius API Key
-To enable the automatic lyrics search, you need a free API key from Genius.
+To enable the automatic song info search, you need a free API key from Genius.
 1.  Go to [genius.com/api-clients](https://genius.com/api-clients) and sign in.
 2.  Create a "New API Client". You can use `Music Emotion Tool` for the name and `http://localhost` for the URLs.
 3.  Click "Generate Access Token" for your new client. Copy this token.
@@ -25,13 +25,16 @@ To enable the automatic lyrics search, you need a free API key from Genius.
 5.  Paste your copied token into the "Genius API Key" field and click "Save Keys". The key will be saved in your browser's storage for future use.
 
 ### Annotation Workflow
-1.  **Load Audio**: Click the "Load Audio" button to select an `.mp3`, `.wav`, or `.flac` file from your computer.
-2.  **Find Lyrics & Metadata**: Click the lyrics icon next to the song title. A search window will appear. Select the correct song from the list to automatically import its lyrics and update the track's title and artist. This provides valuable context for the AI.
-3.  **Analyze Emotions**: Click the **"Analyze Emotions"** button. The app will send the audio data and lyrics to the AI. After a few moments, yellow diamonds representing suggested emotional hotspots will appear on the timeline.
+1.  **Load Audio**: Click the "Load Audio" button to select an `.mp3`, `.wav`, or `.flac` file. The app will automatically try to parse the artist and title from the filename.
+2.  **Find Song Context**: Click the lyrics icon next to the song title. A search window will appear.
+    -   Select the correct song from the search results.
+    -   A new **detail view** will appear, showing album art, release info, general community notes, and lyrics enriched with line-by-line annotations.
+    -   Review the information and click **"Use This Data for AI Analysis"**. This step is crucial for getting the best AI results.
+3.  **Analyze Emotions**: Click the **"Analyze Emotions"** button. The app will send the audio data and the rich song context to the AI. After a few moments, yellow diamonds representing suggested emotional hotspots will appear on the timeline.
 4.  **Review & Annotate**:
-    - Hover over the yellow diamonds to see the AI's reasoning in a tooltip.
-    - Click a diamond to create a new marker, pre-filled with the AI's detailed suggestions.
-    - Adjust the values in the form on the right to match your perception.
-    - Create your own markers manually by pressing 'M' once to set a start point and again to set the end point.
+    -   Hover over the yellow diamonds to see the AI's reasoning in a tooltip.
+    -   Click a diamond to create a new marker, pre-filled with the AI's detailed suggestions.
+    -   Adjust the values in the form on the right to match your perception.
+    -   Create your own markers manually by pressing 'M' once to set a start point and again to set the end point.
 5.  **Refine Your Profile**: As you create and edit markers, you will accumulate "training points." Once you have enough, click the **"Refine Profile"** button to train your personal AI model. Future analyses under this profile will now be more aligned with your input.
 6.  **Export Data**: When you're finished, click the "Export CSV" button to save your work.
