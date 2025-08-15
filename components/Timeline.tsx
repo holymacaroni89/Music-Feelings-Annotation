@@ -1,14 +1,15 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { Marker } from '../types';
+import { Marker, WaveformPoint, ColorPalette } from '../types';
 
 interface TimelineProps {
     duration: number;
     currentTime: number;
     markers: Marker[];
-    waveform: number[] | null;
+    waveform: WaveformPoint[] | null;
     selectedMarkerId: string | null;
     zoom: number; // pixels per second
     pendingMarkerStart: number | null; // New prop for pending marker
+    colorPalette: ColorPalette;
     onScrub: (time: number) => void;
     onMarkerSelect: (markerId: string | null) => void;
     onMarkerMove: (markerId: string, newStartTime: number, newEndTime: number) => void;
@@ -23,6 +24,7 @@ const Timeline: React.FC<TimelineProps> = ({
     selectedMarkerId,
     zoom,
     pendingMarkerStart,
+    colorPalette,
     onScrub,
     onMarkerSelect,
     onMarkerMove,
@@ -40,6 +42,24 @@ const Timeline: React.FC<TimelineProps> = ({
 
     const getXFromTime = useCallback((time: number) => time * zoom, [zoom]);
     const getTimeFromX = useCallback((x: number) => x / zoom, [zoom]);
+
+    useEffect(() => {
+        const scroller = containerRef.current?.parentElement;
+        if (!scroller) return;
+
+        const playheadX = getXFromTime(currentTime);
+        const scrollerWidth = scroller.clientWidth;
+        const scrollLeft = scroller.scrollLeft;
+
+        const isOutOfView = playheadX < scrollLeft || playheadX > scrollLeft + scrollerWidth;
+
+        if (isOutOfView) {
+            scroller.scrollTo({
+                left: playheadX - scrollerWidth / 2,
+                behavior: 'smooth'
+            });
+        }
+    }, [currentTime, getXFromTime]);
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -67,27 +87,43 @@ const Timeline: React.FC<TimelineProps> = ({
         
         // Waveform
         if (waveform) {
-            ctx.fillStyle = 'rgba(110, 118, 129, 0.4)';
             const centerY = height / 2;
-            const step = canvasContentWidth / waveform.length;
-            ctx.beginPath();
-            ctx.moveTo(0, centerY);
+            const step = Math.max(1, canvasContentWidth / waveform.length);
+            
             for(let i = 0; i < waveform.length; i++) {
-                const amp = waveform[i];
-                const x = i * step;
-                const y = amp * centerY;
-                ctx.lineTo(x, centerY - y);
+                const point = waveform[i];
+                const barHeight = point.amp * centerY;
+                
+                let hue: number;
+                let saturation = 80;
+                let lightness = 60;
+
+                switch (colorPalette) {
+                    case 'spectral':
+                        // 300 (violet) -> 0 (red)
+                        hue = 300 * (1 - point.colorValue);
+                        break;
+                    case 'thermal':
+                        // 0 (red) -> 60 (yellow)
+                        hue = 60 * point.colorValue;
+                        lightness = 40 + point.colorValue * 50;
+                        saturation = 90;
+                        break;
+                    case 'grayscale':
+                        hue = 0;
+                        saturation = 0;
+                        lightness = 30 + point.colorValue * 60;
+                        break;
+                    case 'vibrant':
+                    default:
+                        // 240 (blue) -> 40 (orange)
+                        hue = 240 - (point.colorValue * 200);
+                        break;
+                }
+                ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.7)`;
+
+                ctx.fillRect(i * step, centerY - barHeight, step, barHeight * 2);
             }
-            ctx.lineTo(canvasContentWidth, centerY);
-            ctx.moveTo(0, centerY);
-            for(let i = 0; i < waveform.length; i++) {
-                const amp = waveform[i];
-                const x = i * step;
-                const y = amp * centerY;
-                ctx.lineTo(x, centerY + y);
-            }
-            ctx.lineTo(canvasContentWidth, centerY);
-            ctx.fill();
         }
 
         // Ticks
@@ -135,7 +171,7 @@ const Timeline: React.FC<TimelineProps> = ({
         ctx.fillStyle = '#d83c3e';
         ctx.fillRect(playheadX, 0, 2, height);
 
-    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime, waveform]);
+    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime, waveform, colorPalette]);
 
     useEffect(() => {
         draw();

@@ -45,6 +45,13 @@ export interface TrackInfo {
     duration_s: number;
 }
 
+export interface WaveformPoint {
+  amp: number;
+  colorValue: number; // 0 (dark/bass) to 1 (bright/treble)
+}
+
+export type ColorPalette = 'vibrant' | 'spectral' | 'thermal' | 'grayscale';
+
 export interface AppState {
     currentTrackLocalId: string | null;
     trackMetadata: { [key: string]: { name: string; title: string; artist: string; duration_s: number; } };

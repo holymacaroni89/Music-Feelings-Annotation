@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon } from './components/icons';
+import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, SettingsIcon } from './components/icons';
 import Timeline from './components/Timeline';
 import LabelPanel from './components/LabelPanel';
 import MarkerList from './components/MarkerList';
-import { Marker, AppState, TrackInfo } from './types';
+import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette } from './types';
 import { AUTOSAVE_KEY, GEMS_OPTIONS, TRIGGER_OPTIONS } from './constants';
 import { exportToCsv, importFromCsv } from './services/csvService';
 
@@ -24,25 +24,49 @@ const stringToHash = (str: string): string => {
     return hash.toString();
 };
 
-const generateWaveformData = (audioBuffer: AudioBuffer, targetPoints: number = 1000): number[] => {
-    const rawData = audioBuffer.getChannelData(0); // Use the first channel
-    const totalSamples = rawData.length;
-    const samplesPerPoint = Math.floor(totalSamples / targetPoints);
-    const waveformData = [];
+const generateSpectralWaveformData = async (audioBuffer: AudioBuffer, targetPoints: number = 2000): Promise<WaveformPoint[]> => {
+    return new Promise(resolve => {
+        const rawData = audioBuffer.getChannelData(0);
+        const totalSamples = rawData.length;
+        const samplesPerPoint = Math.floor(totalSamples / targetPoints);
+        const waveformData: { amp: number; zcr: number }[] = [];
+        let maxZcr = 0;
 
-    for (let i = 0; i < targetPoints; i++) {
-        const startIndex = i * samplesPerPoint;
-        let peak = 0;
-        for (let j = 0; j < samplesPerPoint; j++) {
-            const sample = Math.abs(rawData[startIndex + j]);
-            if (sample > peak) {
-                peak = sample;
+        for (let i = 0; i < targetPoints; i++) {
+            const startIndex = i * samplesPerPoint;
+            const endIndex = Math.min(startIndex + samplesPerPoint, totalSamples);
+            let peak = 0;
+            let zeroCrossings = 0;
+
+            for (let j = startIndex; j < endIndex; j++) {
+                const sample = rawData[j];
+                if (Math.abs(sample) > peak) {
+                    peak = Math.abs(sample);
+                }
+                if (j > startIndex) {
+                    if (Math.sign(rawData[j]) !== Math.sign(rawData[j - 1])) {
+                        zeroCrossings++;
+                    }
+                }
+            }
+            
+            const zcr = samplesPerPoint > 0 ? zeroCrossings / samplesPerPoint : 0;
+            waveformData.push({ amp: peak, zcr });
+
+            if (zcr > maxZcr) {
+                maxZcr = zcr;
             }
         }
-        waveformData.push(peak);
-    }
-    return waveformData;
+        
+        const finalWaveform: WaveformPoint[] = waveformData.map(data => ({
+            amp: data.amp,
+            colorValue: maxZcr > 0 ? data.zcr / maxZcr : 0,
+        }));
+        
+        resolve(finalWaveform);
+    });
 };
+
 
 // --- Main App Component ---
 const App: React.FC = () => {
@@ -53,19 +77,25 @@ const App: React.FC = () => {
     const [markers, setMarkers] = useState<Marker[]>([]);
     const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
     const [pendingMarkerStart, setPendingMarkerStart] = useState<number | null>(null);
-    const [waveform, setWaveform] = useState<number[] | null>(null);
+    const [waveform, setWaveform] = useState<WaveformPoint[] | null>(null);
     
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [zoom, setZoom] = useState(20);
     const [volume, setVolume] = useState(1);
     
+    // Visualization Settings
+    const [showSettings, setShowSettings] = useState(false);
+    const [waveformDetail, setWaveformDetail] = useState(2000);
+    const [colorPalette, setColorPalette] = useState<ColorPalette>('vibrant');
+
     const [isDirty, setIsDirty] = useState(false);
+    const [isProcessingAudio, setIsProcessingAudio] = useState(false);
     const [warnings, setWarnings] = useState<string[]>([]);
 
     const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const gainNodeRef = useRef<GainNode | null>(null);
-    const animationFrameRef = useRef<number>();
+    const animationFrameRef = useRef<number | null>(null);
     const playbackStartTimeRef = useRef(0);
     const playbackOffsetRef = useRef(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +105,11 @@ const App: React.FC = () => {
     const stopPlayback = useCallback(() => {
         if (audioSourceRef.current) {
             audioSourceRef.current.onended = null; // Prevent onended from firing on manual stop
-            audioSourceRef.current.stop();
+            try {
+                audioSourceRef.current.stop();
+            } catch (e) {
+                // Some browsers throw an error if stop is called on an already stopped source.
+            }
             audioSourceRef.current.disconnect();
             audioSourceRef.current = null;
         }
@@ -147,6 +181,7 @@ const App: React.FC = () => {
             await context.resume();
         }
         
+        setIsProcessingAudio(true);
         const reader = new FileReader();
         reader.onload = async (e) => {
             const arrayBuffer = e.target?.result as ArrayBuffer;
@@ -163,15 +198,18 @@ const App: React.FC = () => {
                     };
                     
                     if (isPlaying) stopPlayback();
+
                     setAudioBuffer(buffer);
-                    setWaveform(generateWaveformData(buffer));
                     setTrackInfo(newTrackInfo);
                     setCurrentTime(0);
                     playbackOffsetRef.current = 0;
                     setMarkers([]);
                     setSelectedMarkerId(null);
                     setPendingMarkerStart(null);
+                    setWaveform(null);
+
                 } catch (err) {
+                    setIsProcessingAudio(false);
                     alert(`Error decoding audio data: ${err instanceof Error ? err.message : String(err)}`);
                 }
             }
@@ -179,11 +217,22 @@ const App: React.FC = () => {
         reader.readAsArrayBuffer(file);
     }, [audioContext, isPlaying, stopPlayback]);
     
+    useEffect(() => {
+        if (audioBuffer) {
+            setIsProcessingAudio(true);
+            generateSpectralWaveformData(audioBuffer, waveformDetail).then(spectralWaveform => {
+                setWaveform(spectralWaveform);
+                setIsProcessingAudio(false);
+            });
+        }
+    }, [audioBuffer, waveformDetail]);
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             loadAudioFile(file);
         }
+        e.target.value = ''; // Reset file input
     };
     
     const togglePlayPause = useCallback(() => {
@@ -456,8 +505,62 @@ const App: React.FC = () => {
 
             <main className="flex flex-grow overflow-hidden">
                 <div className="flex flex-col flex-grow min-w-0">
+                    <div className="p-2 bg-gray-800 border-b border-gray-700 flex-shrink-0">
+                        <div className="flex justify-end">
+                            <button 
+                                onClick={() => setShowSettings(!showSettings)} 
+                                className={`p-1.5 rounded-md transition-colors ${showSettings ? 'bg-blue-500 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                                title="Visualization Settings"
+                            >
+                                <SettingsIcon />
+                            </button>
+                        </div>
+                        {showSettings && (
+                            <div className="grid grid-cols-2 gap-x-8 gap-y-4 p-4 pt-2">
+                                <div>
+                                    <label className="flex justify-between text-sm font-medium text-gray-300">
+                                        <span>Waveform Detail</span>
+                                        <span className="text-gray-400">{waveformDetail} points</span>
+                                    </label>
+                                     <input
+                                        type="range"
+                                        min="500"
+                                        max="8000"
+                                        step="100"
+                                        value={waveformDetail}
+                                        onChange={(e) => setWaveformDetail(parseInt(e.target.value, 10))}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                        disabled={!audioBuffer}
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Low</span>
+                                        <span>High</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label htmlFor="color-palette" className="block text-sm font-medium text-gray-300 mb-1">Color Palette</label>
+                                    <select
+                                        id="color-palette"
+                                        value={colorPalette}
+                                        onChange={e => setColorPalette(e.target.value as ColorPalette)}
+                                        className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="vibrant">Vibrant</option>
+                                        <option value="spectral">Spectral</option>
+                                        <option value="thermal">Thermal</option>
+                                        <option value="grayscale">Grayscale</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <div className="h-48 flex-shrink-0 border-b border-gray-700">
-                        {audioBuffer && trackInfo ? (
+                        {isProcessingAudio && (
+                            <div className="w-full h-full flex justify-center items-center text-gray-400">
+                                Processing audio waveform...
+                            </div>
+                        )}
+                        {!isProcessingAudio && audioBuffer && trackInfo ? (
                              <Timeline
                                 duration={trackInfo.duration_s}
                                 currentTime={currentTime}
@@ -466,13 +569,14 @@ const App: React.FC = () => {
                                 selectedMarkerId={selectedMarkerId}
                                 zoom={zoom}
                                 pendingMarkerStart={pendingMarkerStart}
+                                colorPalette={colorPalette}
                                 onScrub={handleScrub}
                                 onMarkerSelect={handleSelectMarkerAndSeek}
                                 onMarkerMove={handleMarkerMove}
                                 onZoom={(dir) => setZoom(z => dir === 'in' ? Math.min(z * 1.5, 500) : Math.max(z / 1.5, 5))}
                             />
                         ) : (
-                            <div className="w-full h-full flex justify-center items-center text-gray-500">Please load an audio file to begin.</div>
+                            !isProcessingAudio && <div className="w-full h-full flex justify-center items-center text-gray-500">Please load an audio file to begin.</div>
                         )}
                     </div>
                      {warnings.length > 0 && (
