@@ -4,7 +4,7 @@ import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, S
 import Timeline from './components/Timeline';
 import LabelPanel from './components/LabelPanel';
 import MarkerList from './components/MarkerList';
-import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette, Profile, MerSuggestion, TrainingSample } from './types';
+import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette, Profile, MerSuggestion, TrainingSample, GEMS, Trigger } from './types';
 import { AUTOSAVE_KEY, GEMS_OPTIONS, TRIGGER_OPTIONS } from './constants';
 import { exportToCsv, importFromCsv } from './services/csvService';
 import * as trainingService from './services/trainingService';
@@ -372,10 +372,10 @@ const App: React.FC = () => {
             arousal: parseFloat(suggestion.arousal.toFixed(2)),
             intensity: suggestion.intensity,
             confidence: parseFloat(suggestion.confidence.toFixed(2)),
-            gems: '',
-            trigger: [],
+            gems: suggestion.gems,
+            trigger: suggestion.trigger,
             imagery: suggestion.reason, 
-            sync_notes: '',
+            sync_notes: suggestion.sync_notes,
         };
 
         const newMarkers = [...markers, newMarker].sort((a,b) => a.t_start_s - b.t_start_s);

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Marker, GEMS, Trigger } from '../types';
 import { GEMS_OPTIONS, TRIGGER_OPTIONS } from '../constants';
+import { QuestionMarkIcon } from './icons';
 
 interface LabelPanelProps {
     selectedMarker: Marker | null;
@@ -8,8 +9,18 @@ interface LabelPanelProps {
     onDeleteMarker: (markerId: string) => void;
 }
 
+const InfoTooltip = ({ text }: { text: string }) => (
+    <div className="relative group flex items-center">
+        <QuestionMarkIcon />
+        <div className="absolute bottom-full mb-2 w-64 p-2 bg-gray-900 text-gray-200 text-xs rounded-md border border-gray-600 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 transform -translate-x-1/2 left-1/2">
+            {text}
+        </div>
+    </div>
+);
+
 interface SliderProps {
     label: string;
+    tooltipText: string;
     value: number;
     min: number;
     max: number;
@@ -18,10 +29,13 @@ interface SliderProps {
     displayValue: string;
 }
 
-const Slider: React.FC<SliderProps> = ({ label, value, min, max, step, onChange, displayValue }) => (
+const Slider: React.FC<SliderProps> = ({ label, tooltipText, value, min, max, step, onChange, displayValue }) => (
     <div>
-        <label className="flex justify-between text-sm font-medium text-gray-300">
-            <span>{label}</span>
+        <label className="flex justify-between items-center text-sm font-medium text-gray-300">
+            <span className="flex items-center gap-1.5">
+                {label}
+                <InfoTooltip text={tooltipText} />
+            </span>
             <span>{displayValue}</span>
         </label>
         <input
@@ -78,6 +92,7 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
             <div className="space-y-5">
                 <Slider
                     label="Valence"
+                    tooltipText="How positive (+1) or negative (-1) the emotion is."
                     value={selectedMarker.valence}
                     min={-1} max={1} step={0.01}
                     onChange={e => handleInputChange('valence', parseFloat(e.target.value))}
@@ -85,6 +100,7 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
                 />
                 <Slider
                     label="Arousal"
+                    tooltipText="The energy level of the emotion, from calm (0) to activated (1)."
                     value={selectedMarker.arousal}
                     min={0} max={1} step={0.01}
                     onChange={e => handleInputChange('arousal', parseFloat(e.target.value))}
@@ -92,6 +108,7 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
                 />
                 <Slider
                     label="Intensity"
+                    tooltipText="The perceived emotional impact or 'punchiness' of the moment (0-100). A quiet, tense moment can have low arousal but high intensity."
                     value={selectedMarker.intensity}
                     min={0} max={100} step={1}
                     onChange={e => handleInputChange('intensity', parseInt(e.target.value, 10))}
@@ -99,6 +116,7 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
                 />
                 <Slider
                     label="Confidence"
+                    tooltipText="How certain you are about this annotation (0-1)."
                     value={selectedMarker.confidence}
                     min={0} max={1} step={0.01}
                     onChange={e => handleInputChange('confidence', parseFloat(e.target.value))}
@@ -106,7 +124,10 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
                 />
 
                 <div>
-                    <label htmlFor="gems" className="block text-sm font-medium text-gray-300 mb-1">GEMS</label>
+                    <label htmlFor="gems" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 mb-1">
+                        GEMS
+                        <InfoTooltip text="The primary Geneva Emotional Music Scale category that best fits the feeling." />
+                    </label>
                     <select
                         id="gems"
                         value={selectedMarker.gems}
@@ -121,7 +142,10 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Trigger</label>
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-gray-300 mb-2">
+                        Trigger
+                        <InfoTooltip text="The main musical element(s) causing the emotion." />
+                    </label>
                     <div className="grid grid-cols-2 gap-2">
                         {TRIGGER_OPTIONS.map(trigger => (
                             <label key={trigger} className="flex items-center space-x-2 p-2 bg-gray-700 rounded-md select-none cursor-pointer">
@@ -138,7 +162,10 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
                 </div>
 
                 <div>
-                    <label htmlFor="imagery" className="block text-sm font-medium text-gray-300 mb-1">Imagery</label>
+                    <label htmlFor="imagery" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 mb-1">
+                        Imagery
+                        <InfoTooltip text="Free-text description of any images, thoughts, or feelings evoked." />
+                    </label>
                     <textarea
                         id="imagery"
                         rows={3}
@@ -150,7 +177,10 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
                 </div>
 
                 <div>
-                    <label htmlFor="sync_notes" className="block text-sm font-medium text-gray-300 mb-1">Sync Notes</label>
+                    <label htmlFor="sync_notes" className="flex items-center gap-1.5 text-sm font-medium text-gray-300 mb-1">
+                        Sync Notes
+                        <InfoTooltip text="Notes on specific musical events for synchronization (e.g., 'beat drop', 'vocals enter')." />
+                    </label>
                     <textarea
                         id="sync_notes"
                         rows={3}

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { WaveformPoint, MerSuggestion } from '../types';
+import { WaveformPoint, MerSuggestion, GEMS, Trigger } from '../types';
 
 // This assumes process.env.API_KEY is available.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -63,9 +63,22 @@ const suggestionSchema = {
                     reason: {
                         type: Type.STRING,
                         description: "A very brief justification for why this moment was chosen (e.g., 'Sudden drop in brightness', 'Sustained high energy')."
+                    },
+                    gems: {
+                        type: Type.STRING,
+                        description: `The most likely GEMS category. Must be one of: ${Object.values(GEMS).join(', ')}.`
+                    },
+                    trigger: {
+                        type: Type.ARRAY,
+                        description: `The most likely musical triggers. Must be a subset of: ${Object.values(Trigger).join(', ')}.`,
+                        items: { type: Type.STRING }
+                    },
+                    sync_notes: {
+                        type: Type.STRING,
+                        description: "Brief notes on the specific musical event at this exact timestamp (e.g., 'Vocal entry', 'Beat drop', 'Guitar solo starts')."
                     }
                 },
-                 required: ["time", "valence", "arousal", "intensity", "confidence", "reason"],
+                 required: ["time", "valence", "arousal", "intensity", "confidence", "reason", "gems", "trigger", "sync_notes"],
             }
         }
     },
@@ -75,31 +88,30 @@ const suggestionSchema = {
 export const generateMerSuggestions = async (waveform: WaveformPoint[], duration: number): Promise<MerSuggestion[]> => {
     const summarizedData = summarizeWaveform(waveform, duration);
     
-    const systemInstruction = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your task is to analyze summarized audio waveform data and identify the most emotionally significant moments in a piece of music.
+    const systemInstruction = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your task is to analyze summarized audio waveform data and identify the most emotionally significant moments in a piece of music, providing a comprehensive annotation for each.
 The input data is a semicolon-separated list of summaries. Each summary represents a point in time and contains:
 - t: The timestamp in seconds.
-- amp_avg: The average amplitude (volume) around that time.
-- amp_max: The maximum amplitude (volume) around that time.
+- amp_avg: The average amplitude (volume).
+- amp_max: The maximum amplitude.
 - brightness: A value from 0.0 (deep, bassy sounds) to 1.0 (bright, high-frequency sounds).
 
-Your goal is to identify 5 to 15 key moments that represent significant emotional shifts, peaks, or transitions. Focus on:
-- Sudden changes in amplitude (drops or spikes).
-- Transitions between high and low brightness.
-- Sections of sustained high or low energy (amplitude and brightness).
-- The beginning and end of major sections as suggested by the data.
+Your goal is to identify 5 to 15 key moments that represent significant emotional shifts, peaks, or transitions.
 
-For each moment you identify, provide:
+For each moment you identify, provide a full annotation:
 - time: The timestamp in seconds.
-- valence: An estimated valence (-1 to +1).
-- arousal: An estimated arousal (0 to 1).
-- intensity: An integer from 0 to 100 for the perceived emotional impact. This is different from arousal; a quiet, tense moment can have low arousal but high intensity.
-- confidence: A float from 0.0 to 1.0 indicating your confidence that this moment is emotionally significant.
-- reason: A very brief justification for your choice.`;
+- valence: Estimated valence (-1 to +1).
+- arousal: Estimated arousal (0 to 1).
+- intensity: Integer from 0 to 100 for perceived emotional impact. This is different from arousal; a quiet, tense moment can have low arousal but high intensity.
+- confidence: Float from 0.0 to 1.0 indicating your confidence that this moment is emotionally significant.
+- reason: A very brief justification for your choice (e.g., "Sudden drop in brightness").
+- gems: The most likely GEMS (Geneva Emotional Music Scale) category. Choose exactly one from: ${Object.values(GEMS).join(', ')}.
+- trigger: An array of the most likely musical triggers. This must be a subset of: ${Object.values(Trigger).join(', ')}.
+- sync_notes: Brief, objective notes on the specific musical event at this exact timestamp (e.g., 'Vocal entry', 'Beat drop', 'Guitar solo starts').`;
     
     try {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Here is the summarized audio data for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments.\n\nDATA: ${summarizedData}`,
+            contents: `Here is the summarized audio data for a track that is ${duration.toFixed(0)} seconds long. Please identify the key emotional moments and provide full annotations.\n\nDATA: ${summarizedData}`,
             config: {
                 systemInstruction: systemInstruction,
                 responseMimeType: "application/json",
@@ -113,14 +125,24 @@ For each moment you identify, provide:
         if (result && Array.isArray(result.suggestions)) {
             // Validate and format the suggestions
             return result.suggestions
-                .map((s: any) => ({
-                    time: s.time,
-                    valence: Math.max(-1, Math.min(1, s.valence)),
-                    arousal: Math.max(0, Math.min(1, s.arousal)),
-                    intensity: Math.round(Math.max(0, Math.min(100, s.intensity || 0))),
-                    confidence: Math.max(0, Math.min(1, s.confidence || 0)),
-                    reason: s.reason || 'No reason provided.',
-                }))
+                .map((s: any) => {
+                    const parsedGems = Object.values(GEMS).includes(s.gems as GEMS) ? (s.gems as GEMS) : '';
+                    const parsedTriggers = Array.isArray(s.trigger) 
+                        ? s.trigger.filter((t: any) => typeof t === 'string' && Object.values(Trigger).includes(t as Trigger)) as Trigger[]
+                        : [];
+
+                    return {
+                        time: s.time,
+                        valence: Math.max(-1, Math.min(1, s.valence)),
+                        arousal: Math.max(0, Math.min(1, s.arousal)),
+                        intensity: Math.round(Math.max(0, Math.min(100, s.intensity || 0))),
+                        confidence: Math.max(0, Math.min(1, s.confidence || 0)),
+                        reason: s.reason || 'No reason provided.',
+                        gems: parsedGems,
+                        trigger: parsedTriggers,
+                        sync_notes: s.sync_notes || '',
+                    };
+                })
                 .filter((s: MerSuggestion) => s.time <= duration && s.time >= 0);
         }
         

@@ -64,6 +64,9 @@ export interface MerSuggestion {
   intensity: number;
   confidence: number;
   reason: string;
+  gems: GEMS | '';
+  trigger: Trigger[];
+  sync_notes: string;
 }
 
 export interface TrainingSample {
