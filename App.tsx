@@ -3,9 +3,10 @@ import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, S
 import Timeline from './components/Timeline';
 import LabelPanel from './components/LabelPanel';
 import MarkerList from './components/MarkerList';
-import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette, Profile, MerSuggestion } from './types';
+import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette, Profile, MerSuggestion, TrainingSample } from './types';
 import { AUTOSAVE_KEY, GEMS_OPTIONS, TRIGGER_OPTIONS } from './constants';
 import { exportToCsv, importFromCsv } from './services/csvService';
+import * as trainingService from './services/trainingService';
 
 // --- Helper Functions ---
 const formatTime = (seconds: number): string => {
@@ -125,6 +126,7 @@ const App: React.FC = () => {
     // Profile State
     const [profiles, setProfiles] = useState<Profile[]>([{ id: 'default', name: 'Default Profile' }]);
     const [activeProfileId, setActiveProfileId] = useState<string>('default');
+    const [trainingDataCount, setTrainingDataCount] = useState(0);
     
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -148,6 +150,45 @@ const App: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const importInputRef = useRef<HTMLInputElement>(null);
     
+    // --- AI Training Data Collection ---
+    const findClosestSuggestion = useCallback((time: number): MerSuggestion | null => {
+        if (merSuggestions.length === 0) return null;
+        return merSuggestions.reduce((closest, current) => {
+            const closestDiff = Math.abs(closest.time - time);
+            const currentDiff = Math.abs(current.time - time);
+            return currentDiff < closestDiff ? current : closest;
+        }, merSuggestions[0]);
+    }, [merSuggestions]);
+
+    const captureTrainingSample = useCallback((userMarkerData: { valence: number; arousal: number }, time: number) => {
+        if (!activeProfileId) return;
+
+        const aiPrediction = findClosestSuggestion(time);
+        if (!aiPrediction) return;
+
+        const newSample: TrainingSample = {
+            input: {
+                valence: aiPrediction.valence,
+                arousal: aiPrediction.arousal,
+            },
+            output: {
+                valence: userMarkerData.valence,
+                arousal: userMarkerData.arousal,
+            },
+        };
+
+        trainingService.addTrainingSample(activeProfileId, newSample);
+        setTrainingDataCount(prev => prev + 1);
+    }, [activeProfileId, findClosestSuggestion]);
+    
+    useEffect(() => {
+        if (activeProfileId) {
+            const count = trainingService.getTrainingDataCountForProfile(activeProfileId);
+            setTrainingDataCount(count);
+        }
+    }, [activeProfileId]);
+
+
     // --- Audio Handling ---
     const stopPlayback = useCallback(() => {
         if (audioSourceRef.current) {
@@ -344,6 +385,7 @@ const App: React.FC = () => {
         setMarkers(newMarkers);
         setSelectedMarkerId(newMarker.id);
         setIsDirty(true);
+        captureTrainingSample({ valence: newMarker.valence, arousal: newMarker.arousal }, newMarker.t_start_s);
     };
 
     const handleMarkerCreationToggle = useCallback(() => {
@@ -387,16 +429,18 @@ const App: React.FC = () => {
             setSelectedMarkerId(newMarker.id);
             setPendingMarkerStart(null);
             setIsDirty(true);
+            captureTrainingSample({ valence: newMarker.valence, arousal: newMarker.arousal }, newMarker.t_start_s);
         } else {
             // This is the first click: set the start point
             setPendingMarkerStart(currentTime);
             setSelectedMarkerId(null);
         }
-    }, [trackInfo, currentTime, pendingMarkerStart, markers]);
+    }, [trackInfo, currentTime, pendingMarkerStart, markers, captureTrainingSample]);
 
     const updateMarker = (updatedMarker: Marker) => {
         setMarkers(prev => prev.map(m => m.id === updatedMarker.id ? updatedMarker : m).sort((a,b) => a.t_start_s - b.t_start_s));
         setIsDirty(true);
+        captureTrainingSample({ valence: updatedMarker.valence, arousal: updatedMarker.arousal }, updatedMarker.t_start_s);
     };
 
     const deleteMarker = useCallback((markerId: string) => {
@@ -574,6 +618,9 @@ const App: React.FC = () => {
                         <button onClick={handleAddNewProfile} className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
                             <PlusIcon />
                         </button>
+                         <div className="text-xs text-gray-400 ml-2 tabular-nums" title="Number of annotations collected for training the personal AI model.">
+                            {trainingDataCount} training points
+                        </div>
                     </div>
                      {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
                 </div>

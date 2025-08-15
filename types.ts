@@ -63,6 +63,17 @@ export interface MerSuggestion {
   arousal: number;
 }
 
+export interface TrainingSample {
+  input: {
+    valence: number;
+    arousal: number;
+  };
+  output: {
+    valence: number;
+    arousal: number;
+  };
+}
+
 export interface AppState {
     currentTrackLocalId: string | null;
     trackMetadata: { [key: string]: { name: string; title: string; artist: string; duration_s: number; } };
