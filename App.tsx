@@ -119,7 +119,7 @@ const App: React.FC = () => {
     const [colorPalette, setColorPalette] = useState<ColorPalette>('vibrant');
 
     const [isDirty, setIsDirty] = useState(false);
-    const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
     const [processingMessage, setProcessingMessage] = useState('');
     const [warnings, setWarnings] = useState<string[]>([]);
 
@@ -252,7 +252,7 @@ const App: React.FC = () => {
             await context.resume();
         }
         
-        setIsProcessingAudio(true);
+        setIsProcessing(true);
         setProcessingMessage('Decoding audio file...');
         setMerSuggestions([]);
         setLyrics(''); // Reset lyrics on new file load
@@ -283,7 +283,7 @@ const App: React.FC = () => {
                     setWaveform(null);
 
                 } catch (err) {
-                    setIsProcessingAudio(false);
+                    setIsProcessing(false);
                     setProcessingMessage('');
                     alert(`Error decoding audio data: ${err instanceof Error ? err.message : String(err)}`);
                 }
@@ -294,44 +294,40 @@ const App: React.FC = () => {
     
     useEffect(() => {
         if (audioBuffer) {
-            setIsProcessingAudio(true);
+            setIsProcessing(true);
             setProcessingMessage('Generating audio waveform...');
             generateSpectralWaveformData(audioBuffer, waveformDetail).then(spectralWaveform => {
                 setWaveform(spectralWaveform);
-                // Don't stop processing, as AI analysis will begin next
+                setIsProcessing(false);
+                setProcessingMessage('');
             });
         }
     }, [audioBuffer, waveformDetail]);
 
-    useEffect(() => {
-        const analyzeEmotions = async () => {
-            if (waveform && trackInfo) {
-                setIsProcessingAudio(true);
-                setProcessingMessage('Analyzing emotions with AI...');
-                try {
-                    const baseSuggestions = await geminiService.generateMerSuggestions(waveform, trackInfo.duration_s, lyrics);
-                    if (personalModel) {
-                        console.log("Applying personal model to Gemini suggestions...");
-                        const refinedSuggestions = mlService.predict(personalModel, baseSuggestions);
-                        setMerSuggestions(refinedSuggestions);
-                    } else {
-                        setMerSuggestions(baseSuggestions);
-                    }
-                } catch (error) {
-                    console.error("AI analysis failed:", error);
-                    alert("Could not get emotion analysis from the AI. Please check your API key and network connection.");
-                    setMerSuggestions([]); // Clear suggestions on error
-                } finally {
-                    setIsProcessingAudio(false);
-                    setProcessingMessage('');
-                }
-            } else {
-                setMerSuggestions([]);
-            }
-        };
+    const handleAnalyzeEmotions = async () => {
+        if (!waveform || !trackInfo) return;
 
-        analyzeEmotions();
-    }, [waveform, trackInfo, personalModel, lyrics]);
+        setIsProcessing(true);
+        setProcessingMessage('Analyzing emotions with AI...');
+        try {
+            const baseSuggestions = await geminiService.generateMerSuggestions(waveform, trackInfo.duration_s, lyrics);
+            if (personalModel) {
+                console.log("Applying personal model to Gemini suggestions...");
+                const refinedSuggestions = mlService.predict(personalModel, baseSuggestions);
+                setMerSuggestions(refinedSuggestions);
+            } else {
+                setMerSuggestions(baseSuggestions);
+            }
+        } catch (error) {
+            console.error("AI analysis failed:", error);
+            alert("Could not get emotion analysis from the AI. Please check your API key and network connection.");
+            setMerSuggestions([]); // Clear suggestions on error
+        } finally {
+            setIsProcessing(false);
+            setProcessingMessage('');
+        }
+    };
+
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -521,7 +517,10 @@ const App: React.FC = () => {
                 alert("A profile with this name already exists.");
             }
         } else if (modalConfig.type === 'EDIT_LYRICS') {
-            setLyrics(modalInputValue);
+            if (lyrics !== modalInputValue) {
+                setLyrics(modalInputValue);
+                setMerSuggestions([]); // Clear old suggestions as context has changed
+            }
         }
         handleModalClose();
     };
@@ -699,6 +698,17 @@ const App: React.FC = () => {
                                 <LyricsIcon />
                             </button>
                         )}
+                        {trackInfo && (
+                            <button
+                                onClick={handleAnalyzeEmotions}
+                                disabled={isProcessing}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-wait"
+                                title="Analyze emotions with AI"
+                            >
+                                <SparklesIcon />
+                                <span>Analyze Emotions</span>
+                            </button>
+                        )}
                     </div>
                 </div>
                 {trackInfo && (
@@ -791,12 +801,12 @@ const App: React.FC = () => {
                         )}
                     </div>
                     <div className="h-48 flex-shrink-0 border-b border-gray-700">
-                        {isProcessingAudio && (
+                        {isProcessing && (
                             <div className="w-full h-full flex justify-center items-center text-gray-400">
                                 {processingMessage || 'Processing...'}
                             </div>
                         )}
-                        {!isProcessingAudio && audioBuffer && trackInfo ? (
+                        {!isProcessing && audioBuffer && trackInfo ? (
                              <Timeline
                                 duration={trackInfo.duration_s}
                                 currentTime={currentTime}
@@ -814,7 +824,7 @@ const App: React.FC = () => {
                                 onZoom={(dir) => setZoom(z => dir === 'in' ? Math.min(z * 1.5, 500) : Math.max(z / 1.5, 5))}
                             />
                         ) : (
-                            !isProcessingAudio && <div className="w-full h-full flex justify-center items-center text-gray-500">Please load an audio file to begin.</div>
+                            !isProcessing && <div className="w-full h-full flex justify-center items-center text-gray-500">Please load an audio file to begin.</div>
                         )}
                     </div>
                      {warnings.length > 0 && (

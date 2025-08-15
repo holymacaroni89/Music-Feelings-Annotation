@@ -38,6 +38,7 @@ const Timeline: React.FC<TimelineProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const [mouseTime, setMouseTime] = useState<number | null>(null);
     const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null);
+    const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
 
     const interactionState = useRef<{
         isDragging: boolean;
@@ -56,16 +57,23 @@ const Timeline: React.FC<TimelineProps> = ({
         const playheadX = getXFromTime(currentTime);
         const scrollerWidth = scroller.clientWidth;
         const scrollLeft = scroller.scrollLeft;
+        
+        const isOutOfView = playheadX < scrollLeft - 10 || playheadX > scrollLeft + scrollerWidth - 10;
 
-        const isOutOfView = playheadX < scrollLeft || playheadX > scrollLeft + scrollerWidth;
-
-        if (isOutOfView) {
+        if (isPlaying() && isOutOfView) {
             scroller.scrollTo({
                 left: playheadX - scrollerWidth / 2,
                 behavior: 'smooth'
             });
         }
     }, [currentTime, getXFromTime]);
+
+    const isPlaying = () => {
+         // A proxy to guess if audio is playing based on animation frame
+        return !!animationFrameRef.current;
+    }
+    const animationFrameRef = useRef<number | null>(null);
+
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -106,11 +114,9 @@ const Timeline: React.FC<TimelineProps> = ({
 
                 switch (colorPalette) {
                     case 'spectral':
-                        // 300 (violet) -> 0 (red)
                         hue = 300 * (1 - point.colorValue);
                         break;
                     case 'thermal':
-                        // 0 (red) -> 60 (yellow)
                         hue = 60 * point.colorValue;
                         lightness = 40 + point.colorValue * 50;
                         saturation = 90;
@@ -122,7 +128,6 @@ const Timeline: React.FC<TimelineProps> = ({
                         break;
                     case 'vibrant':
                     default:
-                        // 240 (blue) -> 40 (orange)
                         hue = 240 - (point.colorValue * 200);
                         break;
                 }
@@ -171,8 +176,13 @@ const Timeline: React.FC<TimelineProps> = ({
             const startX = getXFromTime(marker.t_start_s);
             const endX = getXFromTime(marker.t_end_s);
             const isSelected = marker.id === selectedMarkerId;
+            const isHovered = marker.id === hoveredMarkerId;
             
-            ctx.fillStyle = isSelected ? 'rgba(47, 129, 247, 0.4)' : 'rgba(56, 139, 253, 0.2)';
+            let fillOpacity = 0.2;
+            if(isHovered) fillOpacity = 0.3;
+            if(isSelected) fillOpacity = 0.4;
+
+            ctx.fillStyle = `rgba(47, 129, 247, ${fillOpacity})`;
             ctx.fillRect(startX, 0, endX - startX, height);
 
             ctx.fillStyle = isSelected ? '#2f81f7' : '#388bfd';
@@ -198,7 +208,7 @@ const Timeline: React.FC<TimelineProps> = ({
         ctx.fillStyle = '#d83c3e';
         ctx.fillRect(playheadX, 0, 2, height);
 
-    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime, waveform, colorPalette, suggestions]);
+    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime, waveform, colorPalette, suggestions, hoveredMarkerId]);
 
     useEffect(() => {
         draw();
@@ -216,7 +226,7 @@ const Timeline: React.FC<TimelineProps> = ({
         const x = getXFromTime(time);
 
         // Check for suggestion click first
-        const suggestionHitRadius = 8; // pixels
+        const suggestionHitRadius = 8;
         for (const suggestion of suggestions) {
             const suggestionX = getXFromTime(suggestion.time);
             const suggestionY = 8;
@@ -227,19 +237,18 @@ const Timeline: React.FC<TimelineProps> = ({
             }
         }
 
-        // Prevent scrubbing while placing a marker
         if (pendingMarkerStart !== null) return;
 
         let clickedOnMarker = false;
         for (const marker of [...markers].reverse()) {
             const startX = getXFromTime(marker.t_start_s);
             const endX = getXFromTime(marker.t_end_s);
-            const handleWidth = 8;
+            const handleHitboxWidth = 16; // Larger hitbox
 
-            if (x >= startX - handleWidth/2 && x <= startX + handleWidth/2) {
+            if (x >= startX - handleHitboxWidth/2 && x <= startX + handleHitboxWidth/2) {
                 interactionState.current = { isDragging: true, draggedMarkerId: marker.id, draggedHandle: 'start', dragOffset: time - marker.t_start_s };
                 clickedOnMarker = true;
-            } else if (x >= endX - handleWidth/2 && x <= endX + handleWidth/2) {
+            } else if (x >= endX - handleHitboxWidth/2 && x <= endX + handleHitboxWidth/2) {
                 interactionState.current = { isDragging: true, draggedMarkerId: marker.id, draggedHandle: 'end', dragOffset: time - marker.t_end_s };
                 clickedOnMarker = true;
             } else if (x > startX && x < endX) {
@@ -248,7 +257,9 @@ const Timeline: React.FC<TimelineProps> = ({
             }
             
             if(clickedOnMarker) {
-                onMarkerSelect(marker.id);
+                if (marker.id !== selectedMarkerId) {
+                  onMarkerSelect(marker.id);
+                }
                 break;
             }
         }
@@ -261,34 +272,58 @@ const Timeline: React.FC<TimelineProps> = ({
     };
     
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!containerRef.current) return;
         const time = Math.max(0, Math.min(duration, getMouseEventTime(e)));
         setMouseTime(time);
         
-        // Tooltip Logic
         const scrollOffset = e.currentTarget.parentElement?.scrollLeft || 0;
-        const xOnCanvas = e.nativeEvent.offsetX + scrollOffset;
+        const currentX = getXFromTime(time);
         const yOnCanvas = e.nativeEvent.offsetY;
+        
+        // Tooltip Logic
         const suggestionHitRadius = 8;
         let foundSuggestion = null;
-
         for (const suggestion of suggestions) {
             const suggestionX = getXFromTime(suggestion.time);
-            const suggestionY = 8; // Y-coord where diamond is drawn
-            const distance = Math.sqrt(Math.pow(xOnCanvas - suggestionX, 2) + Math.pow(yOnCanvas - suggestionY, 2));
-
+            const suggestionY = 8;
+            const distance = Math.sqrt(Math.pow(currentX - suggestionX, 2) + Math.pow(yOnCanvas - suggestionY, 2));
             if (distance < suggestionHitRadius) {
                 foundSuggestion = suggestion;
                 break;
             }
         }
-
         if (foundSuggestion) {
-            const tooltipX = e.nativeEvent.offsetX + 15;
-            const tooltipY = e.nativeEvent.offsetY + 15;
-            setTooltip({ content: foundSuggestion.reason, x: tooltipX, y: tooltipY });
+            setTooltip({
+                content: foundSuggestion.reason,
+                x: currentX - scrollOffset + 15,
+                y: yOnCanvas + 15
+            });
         } else {
             setTooltip(null);
         }
+
+        // Cursor and Hover Logic
+        let newHoveredMarkerId = null;
+        let cursor = 'pointer';
+        const handleHitboxWidth = 16;
+        for (const marker of markers) {
+             const startX = getXFromTime(marker.t_start_s);
+             const endX = getXFromTime(marker.t_end_s);
+             if (currentX > startX - handleHitboxWidth/2 && currentX < endX + handleHitboxWidth/2) {
+                 newHoveredMarkerId = marker.id;
+                 if (currentX < startX + handleHitboxWidth/2 || currentX > endX - handleHitboxWidth/2) {
+                     cursor = 'ew-resize';
+                 } else {
+                     cursor = interactionState.current.isDragging ? 'grabbing' : 'grab';
+                 }
+                 break;
+             }
+        }
+        e.currentTarget.style.cursor = cursor;
+        if(newHoveredMarkerId !== hoveredMarkerId) {
+            setHoveredMarkerId(newHoveredMarkerId);
+        }
+        
 
         // Dragging Logic
         if (!interactionState.current.isDragging) return;
@@ -299,10 +334,10 @@ const Timeline: React.FC<TimelineProps> = ({
              if (!marker) return;
 
              if (draggedHandle === 'start') {
-                 const newStartTime = time;
+                 const newStartTime = Math.max(0, time);
                  onMarkerMove(draggedMarkerId, newStartTime, Math.max(newStartTime, marker.t_end_s));
              } else if (draggedHandle === 'end') {
-                 const newEndTime = time;
+                 const newEndTime = Math.min(duration, time);
                  onMarkerMove(draggedMarkerId, Math.min(newEndTime, marker.t_start_s), newEndTime);
              } else if (draggedHandle === 'body') {
                  const newStartTime = time - dragOffset;
@@ -317,14 +352,21 @@ const Timeline: React.FC<TimelineProps> = ({
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
         interactionState.current.isDragging = false;
+        if(containerRef.current) {
+            handleMouseMove(e); // To reset cursor to 'grab' if still over a body
+        }
     };
     
-    const handleMouseLeave = () => {
-        handleMouseUp();
+    const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+        handleMouseUp(e);
         setMouseTime(null);
         setTooltip(null);
+        setHoveredMarkerId(null);
+        if (e.currentTarget) {
+          e.currentTarget.style.cursor = 'default';
+        }
     }
 
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -334,13 +376,13 @@ const Timeline: React.FC<TimelineProps> = ({
 
     return (
         <div 
-            className="w-full h-full cursor-pointer overflow-x-auto bg-gray-900 relative"
+            className="w-full h-full cursor-default overflow-x-auto bg-gray-900 relative"
             onWheel={handleWheel}
         >
              {tooltip && (
                 <div 
                     className="absolute z-10 p-2 text-xs text-white bg-gray-900 border border-gray-600 rounded-md shadow-lg pointer-events-none max-w-xs"
-                    style={{ left: tooltip.x, top: tooltip.y }}
+                    style={{ left: tooltip.x, top: tooltip.y, transform: 'translateY(10px)' }}
                 >
                     {tooltip.content}
                 </div>
