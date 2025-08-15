@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { XIcon } from './components/icons';
+import { XIcon, SearchIcon, SpinnerIcon } from './components/icons';
 import Header from './components/Header';
 import Workspace from './components/Workspace';
 import Footer from './components/Footer';
 import LabelPanel from './components/LabelPanel';
 import Modal from './components/Modal';
-import { Marker, TrackInfo, ColorPalette } from './types';
+import { Marker, TrackInfo, ColorPalette, GeniusSong } from './types';
 import { exportToCsv, importFromCsv } from './services/csvService';
 import { useAudioEngine } from './hooks/useAudioEngine';
-import { useAnnotationSystem } from './hooks/useAnnotationSystem';
+import { useAnnotationSystem, GeniusSearchState } from './hooks/useAnnotationSystem';
 
 // --- Helper Functions ---
 const stringToHash = (str: string): string => {
@@ -19,6 +19,105 @@ const stringToHash = (str: string): string => {
         hash |= 0;
     }
     return hash.toString();
+};
+
+
+// --- Genius Search Modal Component ---
+interface GeniusSearchModalProps {
+    trackInfo: TrackInfo;
+    geniusSearchState: GeniusSearchState;
+    searchGenius: (query: string) => void;
+    fetchLyricsAndMetadata: (song: GeniusSong) => Promise<{ lyrics: string; metadata: { title: string; artist: string; } } | null>;
+    onLyricsUpdate: (lyrics: string) => void;
+    onTrackInfoUpdate: (metadata: { title: string; artist: string; }) => void;
+    onSwitchToManual: () => void;
+    onClose: () => void;
+}
+
+const GeniusSearchModal: React.FC<GeniusSearchModalProps> = ({
+    trackInfo, geniusSearchState, searchGenius, fetchLyricsAndMetadata, 
+    onLyricsUpdate, onTrackInfoUpdate, onSwitchToManual, onClose
+}) => {
+    const [query, setQuery] = useState(`${trackInfo.title} ${trackInfo.artist}`);
+    
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault();
+        searchGenius(query);
+    };
+
+    const handleSelectSong = async (song: GeniusSong) => {
+        const result = await fetchLyricsAndMetadata(song);
+        if (result) {
+            onLyricsUpdate(result.lyrics);
+            onTrackInfoUpdate(result.metadata);
+            onClose();
+        }
+    };
+
+    return (
+        <>
+            <div className="p-6">
+                 <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-100">Find Lyrics on Genius</h3>
+                        <p className="text-sm text-gray-400">Accurate lyrics provide crucial context for the AI analysis.</p>
+                    </div>
+                   <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                       <XIcon />
+                   </button>
+                </div>
+
+                <form onSubmit={handleSearch} className="flex gap-2 mb-4">
+                    <input
+                        type="text"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        className="flex-grow bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter song title and artist..."
+                        autoFocus
+                    />
+                    <button type="submit" className="bg-blue-500 hover:bg-blue-400 text-white font-bold p-2 rounded transition-colors flex items-center justify-center w-12" disabled={geniusSearchState.status === 'searching'}>
+                        {geniusSearchState.status === 'searching' ? <SpinnerIcon /> : <SearchIcon />}
+                    </button>
+                </form>
+
+                <div className="h-64 overflow-y-auto pr-2">
+                    {geniusSearchState.status === 'results' && geniusSearchState.results.length === 0 && (
+                         <div className="text-center text-gray-500 pt-8">No results found. Try a different search query.</div>
+                    )}
+                     {geniusSearchState.status === 'error' && (
+                         <div className="text-center text-red-400 pt-8">{geniusSearchState.error}</div>
+                    )}
+                    {(geniusSearchState.status === 'searching' || geniusSearchState.status === 'fetching') && (
+                        <div className="flex justify-center items-center h-full">
+                            <SpinnerIcon />
+                        </div>
+                    )}
+                    {geniusSearchState.status === 'results' && geniusSearchState.results.length > 0 && (
+                        <ul className="space-y-2">
+                            {geniusSearchState.results.map(song => (
+                                <li key={song.id} onClick={() => handleSelectSong(song)} className="flex items-center gap-4 p-2 rounded-md hover:bg-gray-700 cursor-pointer transition-colors">
+                                    <img src={song.thumbnailUrl} alt="Album art" className="w-12 h-12 rounded-md object-cover flex-shrink-0" />
+                                    <div className="min-w-0">
+                                        <p className="text-white font-semibold truncate">{song.title}</p>
+                                        <p className="text-gray-400 text-sm truncate">{song.artist}</p>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            </div>
+            <div className="bg-gray-700 px-6 py-4 flex justify-between items-center rounded-b-lg">
+                <button onClick={onSwitchToManual} className="text-sm text-blue-400 hover:underline">
+                    Enter Lyrics Manually
+                </button>
+                <button onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </>
+    )
 };
 
 
@@ -46,10 +145,10 @@ const App: React.FC = () => {
 
     const {
         markers, setMarkers, selectedMarkerId, setSelectedMarkerId, pendingMarkerStart,
-        setPendingMarkerStart, merSuggestions, lyrics, profiles, activeProfileId, setActiveProfileId,
+        setPendingMarkerStart, merSuggestions, setLyrics, profiles, activeProfileId, setActiveProfileId,
         trainingDataCount, trainingStatus, modalConfig, setModalConfig, modalInputValue, setModalInputValue, setIsDirty,
         updateMarker, deleteMarker, handleMarkerCreationToggle, handleSuggestionClick, analyzeEmotions,
-        refineProfile, openModal, handleModalSubmit, MIN_TRAINING_SAMPLES
+        refineProfile, openModal, openManualLyricsModal, handleModalSubmit, MIN_TRAINING_SAMPLES, geniusSearchState, searchGenius, fetchLyricsAndMetadata
     } = useAnnotationSystem(trackInfo);
     
     // Effect to generate waveform when audio buffer is ready or detail level changes
@@ -208,12 +307,13 @@ const App: React.FC = () => {
                 activeProfileId={activeProfileId}
                 onActiveProfileIdChange={setActiveProfileId}
                 onAddNewProfileClick={() => openModal('ADD_PROFILE')}
+                onOpenApiSettings={() => openModal('API_KEYS')}
                 trainingDataCount={trainingDataCount}
                 minTrainingSamples={MIN_TRAINING_SAMPLES}
                 onRefineProfile={refineProfile}
                 trainingStatus={trainingStatus}
                 trackInfo={trackInfo}
-                onEditLyricsClick={() => openModal('EDIT_LYRICS')}
+                onEditLyricsClick={() => openModal('SEARCH_GENIUS')}
                 onAnalyzeEmotions={handleAnalyzeEmotions}
                 isProcessing={isProcessing}
                 isPlaying={isPlaying}
@@ -268,43 +368,77 @@ const App: React.FC = () => {
             
             {modalConfig && (
                 <Modal onClose={() => setModalConfig(null)}>
-                    <div className="p-6">
-                        <div className="flex justify-between items-center mb-4">
-                           <h3 className="text-xl font-bold text-gray-100">{modalConfig.title}</h3>
-                           <button onClick={() => setModalConfig(null)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
-                               <XIcon />
-                           </button>
-                        </div>
-                        
-                        {modalConfig.type === 'ADD_PROFILE' ? (
-                            <input
-                                type="text"
-                                value={modalInputValue}
-                                onChange={(e) => setModalInputValue(e.target.value)}
-                                className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="Enter profile name..."
-                                autoFocus
-                                onKeyDown={(e) => e.key === 'Enter' && handleModalSubmit()}
-                            />
-                        ) : (
-                            <textarea
-                                value={modalInputValue}
-                                onChange={(e) => setModalInputValue(e.target.value)}
-                                rows={15}
-                                className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                                placeholder="Paste lyrics here..."
-                                autoFocus
-                            />
-                        )}
-                    </div>
-                    <div className="bg-gray-700 px-6 py-4 flex justify-end gap-4 rounded-b-lg">
-                        <button onClick={() => setModalConfig(null)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors">
-                            Cancel
-                        </button>
-                        <button onClick={handleModalSubmit} className="bg-blue-500 hover:bg-blue-400 text-white font-bold py-2 px-4 rounded transition-colors">
-                            {modalConfig.submitText}
-                        </button>
-                    </div>
+                     {modalConfig.type === 'SEARCH_GENIUS' && trackInfo ? (
+                        <GeniusSearchModal 
+                            trackInfo={trackInfo}
+                            geniusSearchState={geniusSearchState}
+                            searchGenius={searchGenius}
+                            fetchLyricsAndMetadata={fetchLyricsAndMetadata}
+                            onLyricsUpdate={setLyrics}
+                            onTrackInfoUpdate={(meta) => setTrackInfo(ti => ti ? { ...ti, ...meta } : null)}
+                            onSwitchToManual={openManualLyricsModal}
+                            onClose={() => setModalConfig(null)}
+                        />
+                     ) : (
+                        <>
+                            <div className="p-6">
+                                <div className="flex justify-between items-center mb-4">
+                                   <h3 className="text-xl font-bold text-gray-100">{modalConfig.title}</h3>
+                                   <button onClick={() => setModalConfig(null)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                                       <XIcon />
+                                   </button>
+                                </div>
+                                
+                                {modalConfig.type === 'ADD_PROFILE' && (
+                                    <input
+                                        type="text"
+                                        value={modalInputValue}
+                                        onChange={(e) => setModalInputValue(e.target.value)}
+                                        className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Enter profile name..."
+                                        autoFocus
+                                        onKeyDown={(e) => e.key === 'Enter' && handleModalSubmit()}
+                                    />
+                                )}
+                                {modalConfig.type === 'MANUAL_LYRICS' && (
+                                    <textarea
+                                        value={modalInputValue}
+                                        onChange={(e) => setModalInputValue(e.target.value)}
+                                        rows={15}
+                                        className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                                        placeholder="Paste lyrics here..."
+                                        autoFocus
+                                    />
+                                )}
+                                {modalConfig.type === 'API_KEYS' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label htmlFor="genius-api-key" className="block text-sm font-medium text-gray-300 mb-1">Genius API Key (Client Access Token)</label>
+                                            <input
+                                                id="genius-api-key"
+                                                type="password"
+                                                value={modalInputValue}
+                                                onChange={(e) => setModalInputValue(e.target.value)}
+                                                className="w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="Paste your key here"
+                                                autoFocus
+                                                onKeyDown={(e) => e.key === 'Enter' && handleModalSubmit()}
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">Your key is stored securely in your browser's local storage.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="bg-gray-700 px-6 py-4 flex justify-end gap-4 rounded-b-lg">
+                                <button onClick={() => setModalConfig(null)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                                    Cancel
+                                </button>
+                                <button onClick={handleModalSubmit} className="bg-blue-500 hover:bg-blue-400 text-white font-bold py-2 px-4 rounded transition-colors">
+                                    {modalConfig.submitText}
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </Modal>
             )}
         </div>

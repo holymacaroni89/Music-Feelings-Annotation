@@ -87,4 +87,26 @@ export interface AppState {
     // Profile Management
     profiles: Profile[];
     activeProfileId: string | null;
+    // API Keys
+    geniusApiKey?: string;
+}
+
+export interface GeniusHit {
+  result: {
+    id: number;
+    url: string;
+    title: string;
+    primary_artist: {
+      name: string;
+    };
+    song_art_image_thumbnail_url: string;
+  }
+}
+
+export interface GeniusSong {
+  id: number;
+  url: string;
+  title: string;
+  artist: string;
+  thumbnailUrl: string;
 }

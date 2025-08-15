@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, UserIcon, PlusIcon, SparklesIcon, LyricsIcon } from './icons';
+import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, UserIcon, PlusIcon, SparklesIcon, LyricsIcon, SettingsIcon } from './icons';
 import { Profile, TrackInfo } from '../types';
 
 interface HeaderProps {
@@ -9,6 +9,7 @@ interface HeaderProps {
     activeProfileId: string;
     onActiveProfileIdChange: (id: string) => void;
     onAddNewProfileClick: () => void;
+    onOpenApiSettings: () => void;
     trainingDataCount: number;
     minTrainingSamples: number;
     onRefineProfile: () => void;
@@ -34,6 +35,7 @@ const Header: React.FC<HeaderProps> = ({
     activeProfileId,
     onActiveProfileIdChange,
     onAddNewProfileClick,
+    onOpenApiSettings,
     trainingDataCount,
     minTrainingSamples,
     onRefineProfile,
@@ -93,7 +95,7 @@ const Header: React.FC<HeaderProps> = ({
                  <div className="flex items-center gap-2">
                     {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
                     {trackInfo && (
-                        <button onClick={onEditLyricsClick} className="p-1.5 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white" title="Add/Edit Lyrics">
+                        <button onClick={onEditLyricsClick} className="p-1.5 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white" title="Find Lyrics & Info">
                             <LyricsIcon />
                         </button>
                     )}
@@ -143,8 +145,11 @@ const Header: React.FC<HeaderProps> = ({
             )}
             <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-400">Zoom:</span>
-                 <button onClick={() => onZoom('in')} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors"><ZoomInIcon /></button>
-                 <button onClick={() => onZoom('out')} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors"><ZoomOutIcon /></button>
+                 <button onClick={() => onZoom('in')} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Zoom In"><ZoomInIcon /></button>
+                 <button onClick={() => onZoom('out')} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Zoom Out"><ZoomOutIcon /></button>
+                 <button onClick={onOpenApiSettings} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors ml-2" title="API Key Settings">
+                    <SettingsIcon />
+                 </button>
             </div>
         </header>
     );
