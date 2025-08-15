@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, SettingsIcon, UserIcon, PlusIcon } from './components/icons';
+import * as tf from '@tensorflow/tfjs';
+import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, SettingsIcon, UserIcon, PlusIcon, SparklesIcon } from './components/icons';
 import Timeline from './components/Timeline';
 import LabelPanel from './components/LabelPanel';
 import MarkerList from './components/MarkerList';
@@ -7,6 +8,11 @@ import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette, Profile, MerS
 import { AUTOSAVE_KEY, GEMS_OPTIONS, TRIGGER_OPTIONS } from './constants';
 import { exportToCsv, importFromCsv } from './services/csvService';
 import * as trainingService from './services/trainingService';
+import * as mlService from './services/mlService';
+import * as geminiService from './services/geminiService';
+
+
+const MIN_TRAINING_SAMPLES = 10;
 
 // --- Helper Functions ---
 const formatTime = (seconds: number): string => {
@@ -68,48 +74,6 @@ const generateSpectralWaveformData = async (audioBuffer: AudioBuffer, targetPoin
     });
 };
 
-const simulateMerAnalysis = async (
-    waveform: WaveformPoint[], 
-    duration: number
-): Promise<MerSuggestion[]> => {
-    return new Promise(resolve => {
-        const suggestions: MerSuggestion[] = [];
-        if (!waveform || waveform.length === 0) {
-            resolve([]);
-            return;
-        }
-
-        const threshold = 0.5; // Trigger suggestion if amp is > 50% of max
-        const minTimeBetweenSuggestions = 5.0; // seconds
-        let lastSuggestionTime = -Infinity;
-
-        const maxAmp = waveform.reduce((max, p) => Math.max(max, p.amp), 0);
-        if (maxAmp === 0) {
-                resolve([]);
-                return;
-        }
-
-        waveform.forEach((point, index) => {
-            const isPeak = 
-                (index > 0 && point.amp > waveform[index - 1].amp) &&
-                (index < waveform.length - 1 && point.amp > waveform[index + 1].amp);
-
-            if (isPeak && point.amp > maxAmp * threshold) {
-                const time = (index / waveform.length) * duration;
-                if (time > lastSuggestionTime + minTimeBetweenSuggestions) {
-                    suggestions.push({
-                        time,
-                        valence: Math.random() * 2 - 1,
-                        arousal: Math.random(),
-                    });
-                    lastSuggestionTime = time;
-                }
-            }
-        });
-        resolve(suggestions);
-    });
-};
-
 
 // --- Main App Component ---
 const App: React.FC = () => {
@@ -128,6 +92,10 @@ const App: React.FC = () => {
     const [activeProfileId, setActiveProfileId] = useState<string>('default');
     const [trainingDataCount, setTrainingDataCount] = useState(0);
     
+    // AI Model State
+    const [personalModel, setPersonalModel] = useState<tf.LayersModel | null>(null);
+    const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'done'>('idle');
+
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [zoom, setZoom] = useState(20);
@@ -140,6 +108,7 @@ const App: React.FC = () => {
 
     const [isDirty, setIsDirty] = useState(false);
     const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+    const [processingMessage, setProcessingMessage] = useState('');
     const [warnings, setWarnings] = useState<string[]>([]);
 
     const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -185,6 +154,8 @@ const App: React.FC = () => {
         if (activeProfileId) {
             const count = trainingService.getTrainingDataCountForProfile(activeProfileId);
             setTrainingDataCount(count);
+            // Attempt to load a personal model for the new active profile
+            mlService.loadModel(activeProfileId).then(setPersonalModel);
         }
     }, [activeProfileId]);
 
@@ -270,6 +241,7 @@ const App: React.FC = () => {
         }
         
         setIsProcessingAudio(true);
+        setProcessingMessage('Decoding audio file...');
         setMerSuggestions([]);
         const reader = new FileReader();
         reader.onload = async (e) => {
@@ -299,6 +271,7 @@ const App: React.FC = () => {
 
                 } catch (err) {
                     setIsProcessingAudio(false);
+                    setProcessingMessage('');
                     alert(`Error decoding audio data: ${err instanceof Error ? err.message : String(err)}`);
                 }
             }
@@ -309,20 +282,43 @@ const App: React.FC = () => {
     useEffect(() => {
         if (audioBuffer) {
             setIsProcessingAudio(true);
+            setProcessingMessage('Generating audio waveform...');
             generateSpectralWaveformData(audioBuffer, waveformDetail).then(spectralWaveform => {
                 setWaveform(spectralWaveform);
-                setIsProcessingAudio(false);
+                // Don't stop processing, as AI analysis will begin next
             });
         }
     }, [audioBuffer, waveformDetail]);
 
     useEffect(() => {
-        if (waveform && trackInfo) {
-            simulateMerAnalysis(waveform, trackInfo.duration_s).then(setMerSuggestions);
-        } else {
-            setMerSuggestions([]);
-        }
-    }, [waveform, trackInfo]);
+        const analyzeEmotions = async () => {
+            if (waveform && trackInfo) {
+                setIsProcessingAudio(true);
+                setProcessingMessage('Analyzing emotions with AI...');
+                try {
+                    const baseSuggestions = await geminiService.generateMerSuggestions(waveform, trackInfo.duration_s);
+                    if (personalModel) {
+                        console.log("Applying personal model to Gemini suggestions...");
+                        const refinedSuggestions = mlService.predict(personalModel, baseSuggestions);
+                        setMerSuggestions(refinedSuggestions);
+                    } else {
+                        setMerSuggestions(baseSuggestions);
+                    }
+                } catch (error) {
+                    console.error("AI analysis failed:", error);
+                    alert("Could not get emotion analysis from the AI. Please check your API key and network connection.");
+                    setMerSuggestions([]); // Clear suggestions on error
+                } finally {
+                    setIsProcessingAudio(false);
+                    setProcessingMessage('');
+                }
+            } else {
+                setMerSuggestions([]);
+            }
+        };
+
+        analyzeEmotions();
+    }, [waveform, trackInfo, personalModel]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -374,11 +370,12 @@ const App: React.FC = () => {
             t_end_s: Math.min(suggestion.time + 10.0, trackInfo.duration_s),
             valence: parseFloat(suggestion.valence.toFixed(2)),
             arousal: parseFloat(suggestion.arousal.toFixed(2)),
-            intensity: Math.floor(suggestion.arousal * 100),
-            confidence: 0.75,
+            intensity: suggestion.intensity,
+            confidence: parseFloat(suggestion.confidence.toFixed(2)),
             gems: '',
             trigger: [],
-            imagery: 'Suggested by AI', sync_notes: '',
+            imagery: suggestion.reason, 
+            sync_notes: '',
         };
 
         const newMarkers = [...markers, newMarker].sort((a,b) => a.t_start_s - b.t_start_s);
@@ -472,7 +469,7 @@ const App: React.FC = () => {
         }
     }, [markers, handleScrub]);
 
-    // --- Profile Handling ---
+    // --- Profile & AI Model Handling ---
     const handleAddNewProfile = () => {
         const name = prompt("Enter new profile name:");
         if (name && !profiles.find(p => p.name === name)) {
@@ -485,6 +482,22 @@ const App: React.FC = () => {
             alert("A profile with this name already exists.");
         }
     };
+
+    const handleRefineProfile = async () => {
+        if (!activeProfileId || trainingDataCount < MIN_TRAINING_SAMPLES) return;
+
+        setTrainingStatus('training');
+        const trainingData = trainingService.loadTrainingDataForProfile(activeProfileId);
+        const model = mlService.createModel();
+        
+        await mlService.trainModel(model, trainingData);
+        await mlService.saveModel(model, activeProfileId);
+        
+        setPersonalModel(model);
+        setTrainingStatus('done');
+        setTimeout(() => setTrainingStatus('idle'), 2000);
+    };
+
 
     // --- Autosave & Shortcuts ---
     useEffect(() => {
@@ -504,8 +517,10 @@ const App: React.FC = () => {
         if (savedStateJSON) {
             const savedState: AppState = JSON.parse(savedStateJSON);
             
-            if (savedState.profiles) setProfiles(savedState.profiles);
-            if (savedState.activeProfileId) setActiveProfileId(savedState.activeProfileId);
+            if (savedState.profiles && savedState.profiles.length > 0) {
+                setProfiles(savedState.profiles);
+                 setActiveProfileId(savedState.activeProfileId || savedState.profiles[0].id);
+            }
 
             const handleInteraction = () => {
                 if(trackInfo && savedState.currentTrackLocalId === trackInfo.localId) {
@@ -599,6 +614,8 @@ const App: React.FC = () => {
     };
 
     const selectedMarker = markers.find(m => m.id === selectedMarkerId) || null;
+    
+    const refineButtonText = trainingStatus === 'training' ? 'Training...' : trainingStatus === 'done' ? 'Done!' : 'Refine Profile';
 
     return (
         <div className="h-screen w-screen bg-gray-900 flex flex-col font-sans">
@@ -618,8 +635,18 @@ const App: React.FC = () => {
                         <button onClick={handleAddNewProfile} className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
                             <PlusIcon />
                         </button>
-                         <div className="text-xs text-gray-400 ml-2 tabular-nums" title="Number of annotations collected for training the personal AI model.">
-                            {trainingDataCount} training points
+                         <div className="text-xs text-gray-400 ml-2 tabular-nums flex items-center gap-3" title="Number of annotations collected for training the personal AI model.">
+                            <span>{trainingDataCount} training points</span>
+                            {trainingDataCount >= MIN_TRAINING_SAMPLES && (
+                                <button
+                                    onClick={handleRefineProfile}
+                                    disabled={trainingStatus === 'training'}
+                                    className="px-2 py-1 text-xs rounded-md flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-wait"
+                                >
+                                    <SparklesIcon/>
+                                    {refineButtonText}
+                                </button>
+                            )}
                         </div>
                     </div>
                      {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
@@ -716,7 +743,7 @@ const App: React.FC = () => {
                     <div className="h-48 flex-shrink-0 border-b border-gray-700">
                         {isProcessingAudio && (
                             <div className="w-full h-full flex justify-center items-center text-gray-400">
-                                Processing audio waveform...
+                                {processingMessage || 'Processing...'}
                             </div>
                         )}
                         {!isProcessingAudio && audioBuffer && trackInfo ? (

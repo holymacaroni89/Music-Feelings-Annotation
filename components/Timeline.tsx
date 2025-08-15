@@ -37,6 +37,8 @@ const Timeline: React.FC<TimelineProps> = ({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [mouseTime, setMouseTime] = useState<number | null>(null);
+    const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null);
+
     const interactionState = useRef<{
         isDragging: boolean;
         draggedMarkerId: string | null;
@@ -261,7 +263,34 @@ const Timeline: React.FC<TimelineProps> = ({
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         const time = Math.max(0, Math.min(duration, getMouseEventTime(e)));
         setMouseTime(time);
+        
+        // Tooltip Logic
+        const scrollOffset = e.currentTarget.parentElement?.scrollLeft || 0;
+        const xOnCanvas = e.nativeEvent.offsetX + scrollOffset;
+        const yOnCanvas = e.nativeEvent.offsetY;
+        const suggestionHitRadius = 8;
+        let foundSuggestion = null;
 
+        for (const suggestion of suggestions) {
+            const suggestionX = getXFromTime(suggestion.time);
+            const suggestionY = 8; // Y-coord where diamond is drawn
+            const distance = Math.sqrt(Math.pow(xOnCanvas - suggestionX, 2) + Math.pow(yOnCanvas - suggestionY, 2));
+
+            if (distance < suggestionHitRadius) {
+                foundSuggestion = suggestion;
+                break;
+            }
+        }
+
+        if (foundSuggestion) {
+            const tooltipX = e.nativeEvent.offsetX + 15;
+            const tooltipY = e.nativeEvent.offsetY + 15;
+            setTooltip({ content: foundSuggestion.reason, x: tooltipX, y: tooltipY });
+        } else {
+            setTooltip(null);
+        }
+
+        // Dragging Logic
         if (!interactionState.current.isDragging) return;
         
         const { draggedMarkerId, draggedHandle, dragOffset } = interactionState.current;
@@ -292,9 +321,10 @@ const Timeline: React.FC<TimelineProps> = ({
         interactionState.current.isDragging = false;
     };
     
-    const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    const handleMouseLeave = () => {
         handleMouseUp();
         setMouseTime(null);
+        setTooltip(null);
     }
 
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -304,9 +334,17 @@ const Timeline: React.FC<TimelineProps> = ({
 
     return (
         <div 
-            className="w-full h-full cursor-pointer overflow-x-auto bg-gray-900"
+            className="w-full h-full cursor-pointer overflow-x-auto bg-gray-900 relative"
             onWheel={handleWheel}
         >
+             {tooltip && (
+                <div 
+                    className="absolute z-10 p-2 text-xs text-white bg-gray-900 border border-gray-600 rounded-md shadow-lg pointer-events-none max-w-xs"
+                    style={{ left: tooltip.x, top: tooltip.y }}
+                >
+                    {tooltip.content}
+                </div>
+            )}
             <div
                 ref={containerRef}
                 className="relative h-full"

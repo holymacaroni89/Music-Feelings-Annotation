@@ -61,6 +61,9 @@ export interface MerSuggestion {
   time: number;
   valence: number;
   arousal: number;
+  intensity: number;
+  confidence: number;
+  reason: string;
 }
 
 export interface TrainingSample {
