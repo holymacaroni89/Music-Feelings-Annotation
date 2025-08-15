@@ -52,8 +52,22 @@ export interface WaveformPoint {
 
 export type ColorPalette = 'vibrant' | 'spectral' | 'thermal' | 'grayscale';
 
+export interface Profile {
+  id: string;
+  name: string;
+}
+
+export interface MerSuggestion {
+  time: number;
+  valence: number;
+  arousal: number;
+}
+
 export interface AppState {
     currentTrackLocalId: string | null;
     trackMetadata: { [key: string]: { name: string; title: string; artist: string; duration_s: number; } };
     markers: Marker[];
+    // Profile Management
+    profiles: Profile[];
+    activeProfileId: string | null;
 }

@@ -1,11 +1,12 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { Marker, WaveformPoint, ColorPalette } from '../types';
+import { Marker, WaveformPoint, ColorPalette, MerSuggestion } from '../types';
 
 interface TimelineProps {
     duration: number;
     currentTime: number;
     markers: Marker[];
     waveform: WaveformPoint[] | null;
+    suggestions: MerSuggestion[];
     selectedMarkerId: string | null;
     zoom: number; // pixels per second
     pendingMarkerStart: number | null; // New prop for pending marker
@@ -13,6 +14,7 @@ interface TimelineProps {
     onScrub: (time: number) => void;
     onMarkerSelect: (markerId: string | null) => void;
     onMarkerMove: (markerId: string, newStartTime: number, newEndTime: number) => void;
+    onSuggestionClick: (suggestion: MerSuggestion) => void;
     onZoom: (direction: 'in' | 'out') => void;
 }
 
@@ -21,6 +23,7 @@ const Timeline: React.FC<TimelineProps> = ({
     currentTime,
     markers,
     waveform,
+    suggestions,
     selectedMarkerId,
     zoom,
     pendingMarkerStart,
@@ -28,6 +31,7 @@ const Timeline: React.FC<TimelineProps> = ({
     onScrub,
     onMarkerSelect,
     onMarkerMove,
+    onSuggestionClick,
     onZoom
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -139,6 +143,27 @@ const Timeline: React.FC<TimelineProps> = ({
             }
         }
 
+        // MER Suggestions (Diamonds)
+        ctx.fillStyle = 'rgba(210, 153, 34, 0.9)'; // yellow-300
+        ctx.strokeStyle = '#34290f'; // yellow-900
+        ctx.lineWidth = 1;
+        suggestions.forEach(suggestion => {
+            const x = getXFromTime(suggestion.time);
+            const y = 8; // near the top
+            const size = 5;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.beginPath();
+            ctx.moveTo(0, -size);
+            ctx.lineTo(size, 0);
+            ctx.lineTo(0, size);
+            ctx.lineTo(-size, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        });
+
         // Markers
         markers.forEach(marker => {
             const startX = getXFromTime(marker.t_start_s);
@@ -171,7 +196,7 @@ const Timeline: React.FC<TimelineProps> = ({
         ctx.fillStyle = '#d83c3e';
         ctx.fillRect(playheadX, 0, 2, height);
 
-    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime, waveform, colorPalette]);
+    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime, waveform, colorPalette, suggestions]);
 
     useEffect(() => {
         draw();
@@ -185,11 +210,23 @@ const Timeline: React.FC<TimelineProps> = ({
     };
 
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        // Prevent scrubbing while placing a marker
-        if (pendingMarkerStart !== null) return;
-
         const time = getMouseEventTime(e);
         const x = getXFromTime(time);
+
+        // Check for suggestion click first
+        const suggestionHitRadius = 8; // pixels
+        for (const suggestion of suggestions) {
+            const suggestionX = getXFromTime(suggestion.time);
+            const suggestionY = 8;
+            const distance = Math.sqrt(Math.pow(x - suggestionX, 2) + Math.pow(e.nativeEvent.offsetY - suggestionY, 2));
+            if (distance < suggestionHitRadius) {
+                onSuggestionClick(suggestion);
+                return;
+            }
+        }
+
+        // Prevent scrubbing while placing a marker
+        if (pendingMarkerStart !== null) return;
 
         let clickedOnMarker = false;
         for (const marker of [...markers].reverse()) {

@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, SettingsIcon } from './components/icons';
+import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, SettingsIcon, UserIcon, PlusIcon } from './components/icons';
 import Timeline from './components/Timeline';
 import LabelPanel from './components/LabelPanel';
 import MarkerList from './components/MarkerList';
-import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette } from './types';
+import { Marker, AppState, TrackInfo, WaveformPoint, ColorPalette, Profile, MerSuggestion } from './types';
 import { AUTOSAVE_KEY, GEMS_OPTIONS, TRIGGER_OPTIONS } from './constants';
 import { exportToCsv, importFromCsv } from './services/csvService';
 
@@ -67,6 +67,48 @@ const generateSpectralWaveformData = async (audioBuffer: AudioBuffer, targetPoin
     });
 };
 
+const simulateMerAnalysis = async (
+    waveform: WaveformPoint[], 
+    duration: number
+): Promise<MerSuggestion[]> => {
+    return new Promise(resolve => {
+        const suggestions: MerSuggestion[] = [];
+        if (!waveform || waveform.length === 0) {
+            resolve([]);
+            return;
+        }
+
+        const threshold = 0.5; // Trigger suggestion if amp is > 50% of max
+        const minTimeBetweenSuggestions = 5.0; // seconds
+        let lastSuggestionTime = -Infinity;
+
+        const maxAmp = waveform.reduce((max, p) => Math.max(max, p.amp), 0);
+        if (maxAmp === 0) {
+                resolve([]);
+                return;
+        }
+
+        waveform.forEach((point, index) => {
+            const isPeak = 
+                (index > 0 && point.amp > waveform[index - 1].amp) &&
+                (index < waveform.length - 1 && point.amp > waveform[index + 1].amp);
+
+            if (isPeak && point.amp > maxAmp * threshold) {
+                const time = (index / waveform.length) * duration;
+                if (time > lastSuggestionTime + minTimeBetweenSuggestions) {
+                    suggestions.push({
+                        time,
+                        valence: Math.random() * 2 - 1,
+                        arousal: Math.random(),
+                    });
+                    lastSuggestionTime = time;
+                }
+            }
+        });
+        resolve(suggestions);
+    });
+};
+
 
 // --- Main App Component ---
 const App: React.FC = () => {
@@ -78,6 +120,11 @@ const App: React.FC = () => {
     const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
     const [pendingMarkerStart, setPendingMarkerStart] = useState<number | null>(null);
     const [waveform, setWaveform] = useState<WaveformPoint[] | null>(null);
+    const [merSuggestions, setMerSuggestions] = useState<MerSuggestion[]>([]);
+
+    // Profile State
+    const [profiles, setProfiles] = useState<Profile[]>([{ id: 'default', name: 'Default Profile' }]);
+    const [activeProfileId, setActiveProfileId] = useState<string>('default');
     
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -182,6 +229,7 @@ const App: React.FC = () => {
         }
         
         setIsProcessingAudio(true);
+        setMerSuggestions([]);
         const reader = new FileReader();
         reader.onload = async (e) => {
             const arrayBuffer = e.target?.result as ArrayBuffer;
@@ -227,6 +275,14 @@ const App: React.FC = () => {
         }
     }, [audioBuffer, waveformDetail]);
 
+    useEffect(() => {
+        if (waveform && trackInfo) {
+            simulateMerAnalysis(waveform, trackInfo.duration_s).then(setMerSuggestions);
+        } else {
+            setMerSuggestions([]);
+        }
+    }, [waveform, trackInfo]);
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -264,6 +320,32 @@ const App: React.FC = () => {
     }, [audioBuffer, isPlaying, startPlayback, stopPlayback]);
 
     // --- Marker Handling ---
+    const handleSuggestionClick = (suggestion: MerSuggestion) => {
+        if (!trackInfo) return;
+
+        const newMarker: Marker = {
+            id: crypto.randomUUID(),
+            trackLocalId: trackInfo.localId,
+            title: trackInfo.title,
+            artist: trackInfo.artist,
+            duration_s: trackInfo.duration_s,
+            t_start_s: suggestion.time,
+            t_end_s: Math.min(suggestion.time + 10.0, trackInfo.duration_s),
+            valence: parseFloat(suggestion.valence.toFixed(2)),
+            arousal: parseFloat(suggestion.arousal.toFixed(2)),
+            intensity: Math.floor(suggestion.arousal * 100),
+            confidence: 0.75,
+            gems: '',
+            trigger: [],
+            imagery: 'Suggested by AI', sync_notes: '',
+        };
+
+        const newMarkers = [...markers, newMarker].sort((a,b) => a.t_start_s - b.t_start_s);
+        setMarkers(newMarkers);
+        setSelectedMarkerId(newMarker.id);
+        setIsDirty(true);
+    };
+
     const handleMarkerCreationToggle = useCallback(() => {
         if (!trackInfo) return;
 
@@ -346,6 +428,20 @@ const App: React.FC = () => {
         }
     }, [markers, handleScrub]);
 
+    // --- Profile Handling ---
+    const handleAddNewProfile = () => {
+        const name = prompt("Enter new profile name:");
+        if (name && !profiles.find(p => p.name === name)) {
+            const newProfile: Profile = { id: crypto.randomUUID(), name };
+            const newProfiles = [...profiles, newProfile];
+            setProfiles(newProfiles);
+            setActiveProfileId(newProfile.id);
+            setIsDirty(true);
+        } else if (name) {
+            alert("A profile with this name already exists.");
+        }
+    };
+
     // --- Autosave & Shortcuts ---
     useEffect(() => {
         try {
@@ -363,9 +459,10 @@ const App: React.FC = () => {
         const savedStateJSON = localStorage.getItem(AUTOSAVE_KEY);
         if (savedStateJSON) {
             const savedState: AppState = JSON.parse(savedStateJSON);
-            const a = new Audio();
-            a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
             
+            if (savedState.profiles) setProfiles(savedState.profiles);
+            if (savedState.activeProfileId) setActiveProfileId(savedState.activeProfileId);
+
             const handleInteraction = () => {
                 if(trackInfo && savedState.currentTrackLocalId === trackInfo.localId) {
                     setMarkers(savedState.markers.filter(m => m.trackLocalId === trackInfo.localId));
@@ -391,13 +488,15 @@ const App: React.FC = () => {
                     currentTrackLocalId: trackInfo.localId,
                     trackMetadata: { [trackInfo.localId]: { name: trackInfo.name, title: trackInfo.title, artist: trackInfo.artist, duration_s: trackInfo.duration_s } },
                     markers: markers,
+                    profiles: profiles,
+                    activeProfileId: activeProfileId,
                 };
                 localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(stateToSave));
                 setIsDirty(false);
             }
         }, 1000);
         return () => clearTimeout(handler);
-    }, [isDirty, markers, trackInfo]);
+    }, [isDirty, markers, trackInfo, profiles, activeProfileId]);
 
     const handleKeyboardShortcuts = useCallback((e: KeyboardEvent) => {
         if ((e.target as HTMLElement).tagName.match(/INPUT|TEXTAREA|SELECT/)) return;
@@ -463,7 +562,20 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-4">
                     <button onClick={() => fileInputRef.current?.click()} className="bg-blue-500 hover:bg-blue-400 text-white font-bold py-2 px-4 rounded transition-colors">Load Audio</button>
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".mp3,.wav,.flac" className="hidden" />
-                    {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
+                    <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
+                        <UserIcon />
+                        <select
+                            value={activeProfileId || ''}
+                            onChange={e => setActiveProfileId(e.target.value)}
+                            className="bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500"
+                        >
+                            {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <button onClick={handleAddNewProfile} className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
+                            <PlusIcon />
+                        </button>
+                    </div>
+                     {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
                 </div>
                 {trackInfo && (
                     <div className="flex items-center gap-4">
@@ -566,6 +678,7 @@ const App: React.FC = () => {
                                 currentTime={currentTime}
                                 markers={markers}
                                 waveform={waveform}
+                                suggestions={merSuggestions}
                                 selectedMarkerId={selectedMarkerId}
                                 zoom={zoom}
                                 pendingMarkerStart={pendingMarkerStart}
@@ -573,6 +686,7 @@ const App: React.FC = () => {
                                 onScrub={handleScrub}
                                 onMarkerSelect={handleSelectMarkerAndSeek}
                                 onMarkerMove={handleMarkerMove}
+                                onSuggestionClick={handleSuggestionClick}
                                 onZoom={(dir) => setZoom(z => dir === 'in' ? Math.min(z * 1.5, 500) : Math.max(z / 1.5, 5))}
                             />
                         ) : (
