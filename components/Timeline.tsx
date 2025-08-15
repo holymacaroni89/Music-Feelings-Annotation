@@ -5,6 +5,7 @@ interface TimelineProps {
     duration: number;
     currentTime: number;
     markers: Marker[];
+    waveform: number[] | null;
     selectedMarkerId: string | null;
     zoom: number; // pixels per second
     pendingMarkerStart: number | null; // New prop for pending marker
@@ -18,6 +19,7 @@ const Timeline: React.FC<TimelineProps> = ({
     duration,
     currentTime,
     markers,
+    waveform,
     selectedMarkerId,
     zoom,
     pendingMarkerStart,
@@ -59,9 +61,36 @@ const Timeline: React.FC<TimelineProps> = ({
         
         const { height } = rect;
 
+        // Background
         ctx.fillStyle = '#23272d';
         ctx.fillRect(0, 0, canvasContentWidth, height);
+        
+        // Waveform
+        if (waveform) {
+            ctx.fillStyle = 'rgba(110, 118, 129, 0.4)';
+            const centerY = height / 2;
+            const step = canvasContentWidth / waveform.length;
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            for(let i = 0; i < waveform.length; i++) {
+                const amp = waveform[i];
+                const x = i * step;
+                const y = amp * centerY;
+                ctx.lineTo(x, centerY - y);
+            }
+            ctx.lineTo(canvasContentWidth, centerY);
+            ctx.moveTo(0, centerY);
+            for(let i = 0; i < waveform.length; i++) {
+                const amp = waveform[i];
+                const x = i * step;
+                const y = amp * centerY;
+                ctx.lineTo(x, centerY + y);
+            }
+            ctx.lineTo(canvasContentWidth, centerY);
+            ctx.fill();
+        }
 
+        // Ticks
         const tickInterval = zoom > 50 ? 1 : (zoom > 10 ? 5 : 10);
         ctx.font = '10px sans-serif';
         for (let i = 0; i <= duration; i += tickInterval) {
@@ -74,6 +103,7 @@ const Timeline: React.FC<TimelineProps> = ({
             }
         }
 
+        // Markers
         markers.forEach(marker => {
             const startX = getXFromTime(marker.t_start_s);
             const endX = getXFromTime(marker.t_end_s);
@@ -100,11 +130,12 @@ const Timeline: React.FC<TimelineProps> = ({
             }
         }
 
+        // Playhead
         const playheadX = getXFromTime(currentTime);
         ctx.fillStyle = '#d83c3e';
         ctx.fillRect(playheadX, 0, 2, height);
 
-    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime]);
+    }, [duration, currentTime, markers, selectedMarkerId, zoom, getXFromTime, pendingMarkerStart, mouseTime, waveform]);
 
     useEffect(() => {
         draw();

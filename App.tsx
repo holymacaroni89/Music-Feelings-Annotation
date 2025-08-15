@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon } from './components/icons';
+import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon } from './components/icons';
 import Timeline from './components/Timeline';
 import LabelPanel from './components/LabelPanel';
 import MarkerList from './components/MarkerList';
@@ -24,6 +24,26 @@ const stringToHash = (str: string): string => {
     return hash.toString();
 };
 
+const generateWaveformData = (audioBuffer: AudioBuffer, targetPoints: number = 1000): number[] => {
+    const rawData = audioBuffer.getChannelData(0); // Use the first channel
+    const totalSamples = rawData.length;
+    const samplesPerPoint = Math.floor(totalSamples / targetPoints);
+    const waveformData = [];
+
+    for (let i = 0; i < targetPoints; i++) {
+        const startIndex = i * samplesPerPoint;
+        let peak = 0;
+        for (let j = 0; j < samplesPerPoint; j++) {
+            const sample = Math.abs(rawData[startIndex + j]);
+            if (sample > peak) {
+                peak = sample;
+            }
+        }
+        waveformData.push(peak);
+    }
+    return waveformData;
+};
+
 // --- Main App Component ---
 const App: React.FC = () => {
     const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
@@ -33,15 +53,18 @@ const App: React.FC = () => {
     const [markers, setMarkers] = useState<Marker[]>([]);
     const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
     const [pendingMarkerStart, setPendingMarkerStart] = useState<number | null>(null);
+    const [waveform, setWaveform] = useState<number[] | null>(null);
     
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [zoom, setZoom] = useState(20);
+    const [volume, setVolume] = useState(1);
     
     const [isDirty, setIsDirty] = useState(false);
     const [warnings, setWarnings] = useState<string[]>([]);
 
     const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+    const gainNodeRef = useRef<GainNode | null>(null);
     const animationFrameRef = useRef<number>();
     const playbackStartTimeRef = useRef(0);
     const playbackOffsetRef = useRef(0);
@@ -52,7 +75,7 @@ const App: React.FC = () => {
     const stopPlayback = useCallback(() => {
         if (audioSourceRef.current) {
             audioSourceRef.current.onended = null; // Prevent onended from firing on manual stop
-            audioSourceRef.current.stop(0);
+            audioSourceRef.current.stop();
             audioSourceRef.current.disconnect();
             audioSourceRef.current = null;
         }
@@ -60,11 +83,11 @@ const App: React.FC = () => {
     }, []);
 
     const startPlayback = useCallback((startTime: number) => {
-        if (!audioContext || !audioBuffer || audioSourceRef.current) return;
+        if (!audioContext || !audioBuffer || !gainNodeRef.current || audioSourceRef.current) return;
         
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
+        source.connect(gainNodeRef.current);
         
         const offset = Math.max(0, startTime >= audioBuffer.duration ? 0 : startTime);
         playbackStartTimeRef.current = audioContext.currentTime;
@@ -104,11 +127,20 @@ const App: React.FC = () => {
             }
         };
     }, [isPlaying, updateTime]);
+    
+    useEffect(() => {
+        if (gainNodeRef.current) {
+            gainNodeRef.current.gain.value = volume;
+        }
+    }, [volume]);
 
     const loadAudioFile = useCallback(async (file: File) => {
         let context = audioContext;
         if (!context) {
             context = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const gainNode = context.createGain();
+            gainNode.connect(context.destination);
+            gainNodeRef.current = gainNode;
             setAudioContext(context);
         }
         if (context.state === 'suspended') {
@@ -132,6 +164,7 @@ const App: React.FC = () => {
                     
                     if (isPlaying) stopPlayback();
                     setAudioBuffer(buffer);
+                    setWaveform(generateWaveformData(buffer));
                     setTrackInfo(newTrackInfo);
                     setCurrentTime(0);
                     playbackOffsetRef.current = 0;
@@ -268,6 +301,9 @@ const App: React.FC = () => {
     useEffect(() => {
         try {
           const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const gainNode = context.createGain();
+          gainNode.connect(context.destination);
+          gainNodeRef.current = gainNode;
           setAudioContext(context);
         } catch(e) {
           alert('Web Audio API is not supported in this browser.');
@@ -393,8 +429,21 @@ const App: React.FC = () => {
                         >
                             <MarkerIcon />
                         </button>
-                        <div className="text-lg font-mono text-gray-200">
+                        <div className="text-lg font-mono text-gray-200 w-32 text-center">
                            {formatTime(currentTime)} / {formatTime(trackInfo.duration_s)}
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-300">
+                            <VolumeIcon />
+                            <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value={volume}
+                                onChange={(e) => setVolume(parseFloat(e.target.value))}
+                                className="w-24 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                title={`Volume: ${Math.round(volume*100)}%`}
+                            />
                         </div>
                     </div>
                 )}
@@ -413,6 +462,7 @@ const App: React.FC = () => {
                                 duration={trackInfo.duration_s}
                                 currentTime={currentTime}
                                 markers={markers}
+                                waveform={waveform}
                                 selectedMarkerId={selectedMarkerId}
                                 zoom={zoom}
                                 pendingMarkerStart={pendingMarkerStart}
