@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { Marker, WaveformPoint, ColorPalette, MerSuggestion } from '../types';
+import { Marker, WaveformPoint, ColorPalette, MerSuggestion, GEMS } from '../types';
+import { GEMS_COLORS } from '../constants';
 
 interface TimelineProps {
     duration: number;
@@ -38,7 +39,7 @@ const Timeline: React.FC<TimelineProps> = ({
     const containerRef = useRef<HTMLDivElement>(null); // This is the inner, full-width div
     const scrollerRef = useRef<HTMLDivElement>(null); // This is the outer, scrolling div
     const [mouseTime, setMouseTime] = useState<number | null>(null);
-    const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null);
+    const [hoveredSuggestion, setHoveredSuggestion] = useState<MerSuggestion | null>(null);
     const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
 
     const interactionState = useRef<{
@@ -50,27 +51,27 @@ const Timeline: React.FC<TimelineProps> = ({
 
     const getXFromTime = useCallback((time: number) => time * zoom, [zoom]);
     const getTimeFromX = useCallback((x: number) => x / zoom, [zoom]);
+    
+    const animationFrameRef = useRef<number | null>(null);
 
+    // Auto-scroll logic
     useEffect(() => {
         const scroller = scrollerRef.current;
-        if (!scroller) return;
+        if (!scroller || !animationFrameRef.current) return; // Only auto-scroll during playback
 
         const playheadX = getXFromTime(currentTime);
         const scrollerWidth = scroller.clientWidth;
         const scrollLeft = scroller.scrollLeft;
         
-        const isPlaying = !!animationFrameRef.current;
-        const isOutOfView = playheadX < scrollLeft - 10 || playheadX > scrollLeft + scrollerWidth - 10;
+        const isOutOfView = playheadX < scrollLeft + 20 || playheadX > scrollLeft + scrollerWidth - 20;
 
-        if (isPlaying && isOutOfView) {
+        if (isOutOfView) {
             scroller.scrollTo({
                 left: playheadX - scrollerWidth / 2,
                 behavior: 'smooth'
             });
         }
     }, [currentTime, getXFromTime]);
-
-    const animationFrameRef = useRef<number | null>(null);
 
 
     const draw = useCallback(() => {
@@ -214,28 +215,17 @@ const Timeline: React.FC<TimelineProps> = ({
 
     const getMouseEventTime = (e: React.MouseEvent<HTMLDivElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
-        // BUGFIX: e.clientX - rect.left correctly calculates the mouse position
-        // relative to the start of the full-width canvas, automatically accounting for scroll.
-        // The previous addition of scrollOffset was incorrect and caused the bug.
         const x = e.clientX - rect.left;
         return getTimeFromX(x);
     };
 
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
         const time = getMouseEventTime(e);
-        const x = getXFromTime(time);
-        const y = e.nativeEvent.offsetY;
-
-        // Check for suggestion click first
-        const suggestionHitRadius = 8;
-        for (const suggestion of suggestions) {
-            const suggestionX = getXFromTime(suggestion.time);
-            const suggestionY = 8;
-            const distance = Math.sqrt(Math.pow(x - suggestionX, 2) + Math.pow(y - suggestionY, 2));
-            if (distance < suggestionHitRadius) {
-                onSuggestionClick(suggestion);
-                return;
-            }
+        
+        // Use hovered suggestion if available, for better click accuracy
+        if (hoveredSuggestion) {
+            onSuggestionClick(hoveredSuggestion);
+            return;
         }
 
         if (pendingMarkerStart !== null) return;
@@ -244,6 +234,7 @@ const Timeline: React.FC<TimelineProps> = ({
         for (const marker of [...markers].reverse()) {
             const startX = getXFromTime(marker.t_start_s);
             const endX = getXFromTime(marker.t_end_s);
+            const x = getXFromTime(time);
             const handleHitboxWidth = 16; // Larger hitbox
 
             if (x >= startX - handleHitboxWidth/2 && x <= startX + handleHitboxWidth/2) {
@@ -278,37 +269,27 @@ const Timeline: React.FC<TimelineProps> = ({
         setMouseTime(time);
         
         const currentX = getXFromTime(time);
-        const yOnCanvas = e.nativeEvent.offsetY;
         
-        // Tooltip Logic
-        const suggestionHitRadius = 8;
-        let foundSuggestion = null;
+        // Tooltip & Suggestion Hover Logic
+        // BUGFIX: Find the CLOSEST suggestion, not the first one in range.
+        const suggestionHitRadius = 10;
+        let closestSuggestion: MerSuggestion | null = null;
+        let minDistance = Infinity;
+
         for (const suggestion of suggestions) {
             const suggestionX = getXFromTime(suggestion.time);
-            const suggestionY = 8;
-            const distance = Math.sqrt(Math.pow(currentX - suggestionX, 2) + Math.pow(yOnCanvas - suggestionY, 2));
-            if (distance < suggestionHitRadius) {
-                foundSuggestion = suggestion;
-                break;
+            const distance = Math.abs(currentX - suggestionX);
+            if (distance < minDistance && distance < suggestionHitRadius) {
+                minDistance = distance;
+                closestSuggestion = suggestion;
             }
         }
+        setHoveredSuggestion(closestSuggestion);
 
-        if (foundSuggestion) {
-            // BUGFIX: Calculate tooltip position relative to the scroller viewport, not the canvas.
-            const scrollerRect = scrollerRef.current.getBoundingClientRect();
-            setTooltip({
-                content: foundSuggestion.reason,
-                x: e.clientX - scrollerRect.left,
-                y: e.clientY - scrollerRect.top
-            });
-        } else {
-            setTooltip(null);
-        }
-
-        // Cursor and Hover Logic
+        // Cursor and Marker Hover Logic
         let newHoveredMarkerId = null;
         let cursor = 'default';
-        if (suggestions.length > 0 && foundSuggestion) {
+        if (closestSuggestion) {
             cursor = 'pointer';
         }
 
@@ -316,7 +297,7 @@ const Timeline: React.FC<TimelineProps> = ({
         for (const marker of markers) {
              const startX = getXFromTime(marker.t_start_s);
              const endX = getXFromTime(marker.t_end_s);
-             if (currentX > startX && currentX < endX) { // check body first
+             if (currentX > startX + handleHitboxWidth/2 && currentX < endX - handleHitboxWidth/2) {
                  newHoveredMarkerId = marker.id;
                  cursor = interactionState.current.isDragging ? 'grabbing' : 'grab';
                  break;
@@ -342,10 +323,10 @@ const Timeline: React.FC<TimelineProps> = ({
 
              if (draggedHandle === 'start') {
                  const newStartTime = Math.max(0, time);
-                 onMarkerMove(draggedMarkerId, newStartTime, Math.max(newStartTime, marker.t_end_s));
+                 onMarkerMove(draggedMarkerId, newStartTime, Math.max(newStartTime + 0.1, marker.t_end_s));
              } else if (draggedHandle === 'end') {
                  const newEndTime = Math.min(duration, time);
-                 onMarkerMove(draggedMarkerId, Math.min(newEndTime, marker.t_start_s), newEndTime);
+                 onMarkerMove(draggedMarkerId, Math.min(newEndTime - 0.1, marker.t_start_s), newEndTime);
              } else if (draggedHandle === 'body') {
                  const newStartTime = time - dragOffset;
                  const markerDuration = marker.t_end_s - marker.t_start_s;
@@ -369,7 +350,7 @@ const Timeline: React.FC<TimelineProps> = ({
     const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
         handleMouseUp(e);
         setMouseTime(null);
-        setTooltip(null);
+        setHoveredSuggestion(null);
         setHoveredMarkerId(null);
         if (e.currentTarget) {
           e.currentTarget.style.cursor = 'default';
@@ -387,14 +368,6 @@ const Timeline: React.FC<TimelineProps> = ({
             className="w-full h-full cursor-default overflow-x-auto bg-gray-900 relative"
             onWheel={handleWheel}
         >
-             {tooltip && (
-                <div 
-                    className="absolute z-10 p-2 text-xs text-white bg-gray-900 border border-gray-600 rounded-md shadow-lg pointer-events-none max-w-xs"
-                    style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(15px, 15px)' }}
-                >
-                    {tooltip.content}
-                </div>
-            )}
             <div
                 ref={containerRef}
                 className="relative h-full"
@@ -404,6 +377,25 @@ const Timeline: React.FC<TimelineProps> = ({
                 onMouseLeave={handleMouseLeave}
             >
                 <canvas ref={canvasRef} style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%' }} />
+                 {hoveredSuggestion && (
+                    <div 
+                        className="absolute z-10 p-2 text-xs text-white bg-gray-800 border border-gray-600 rounded-md shadow-lg pointer-events-none w-48"
+                        style={{ 
+                            left: `${getXFromTime(hoveredSuggestion.time)}px`, 
+                            top: '18px', // Position below the diamond
+                            transform: 'translateX(-50%)', // Center it
+                            opacity: 1,
+                            transition: 'opacity 0.1s ease-in-out'
+                        }}
+                    >
+                        <div className="flex items-center gap-2 mb-1">
+                            <div className={`w-2.5 h-2.5 rounded-full ${hoveredSuggestion.gems ? GEMS_COLORS[hoveredSuggestion.gems] : 'bg-gray-500'}`}></div>
+                            <span className="font-bold text-gray-100">{hoveredSuggestion.gems || 'Suggestion'}</span>
+                            <span className="text-gray-400 font-mono ml-auto">@{hoveredSuggestion.time.toFixed(1)}s</span>
+                        </div>
+                        <p className="text-gray-300">{hoveredSuggestion.reason}</p>
+                    </div>
+                )}
             </div>
         </div>
     );
