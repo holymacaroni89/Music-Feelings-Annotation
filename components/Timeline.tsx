@@ -35,7 +35,8 @@ const Timeline: React.FC<TimelineProps> = ({
     onZoom
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null); // This is the inner, full-width div
+    const scrollerRef = useRef<HTMLDivElement>(null); // This is the outer, scrolling div
     const [mouseTime, setMouseTime] = useState<number | null>(null);
     const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null);
     const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
@@ -51,16 +52,17 @@ const Timeline: React.FC<TimelineProps> = ({
     const getTimeFromX = useCallback((x: number) => x / zoom, [zoom]);
 
     useEffect(() => {
-        const scroller = containerRef.current?.parentElement;
+        const scroller = scrollerRef.current;
         if (!scroller) return;
 
         const playheadX = getXFromTime(currentTime);
         const scrollerWidth = scroller.clientWidth;
         const scrollLeft = scroller.scrollLeft;
         
+        const isPlaying = !!animationFrameRef.current;
         const isOutOfView = playheadX < scrollLeft - 10 || playheadX > scrollLeft + scrollerWidth - 10;
 
-        if (isPlaying() && isOutOfView) {
+        if (isPlaying && isOutOfView) {
             scroller.scrollTo({
                 left: playheadX - scrollerWidth / 2,
                 behavior: 'smooth'
@@ -68,10 +70,6 @@ const Timeline: React.FC<TimelineProps> = ({
         }
     }, [currentTime, getXFromTime]);
 
-    const isPlaying = () => {
-         // A proxy to guess if audio is playing based on animation frame
-        return !!animationFrameRef.current;
-    }
     const animationFrameRef = useRef<number | null>(null);
 
 
@@ -216,21 +214,24 @@ const Timeline: React.FC<TimelineProps> = ({
 
     const getMouseEventTime = (e: React.MouseEvent<HTMLDivElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
-        const scrollOffset = e.currentTarget.parentElement?.scrollLeft || 0;
-        const x = e.clientX - rect.left + scrollOffset;
+        // BUGFIX: e.clientX - rect.left correctly calculates the mouse position
+        // relative to the start of the full-width canvas, automatically accounting for scroll.
+        // The previous addition of scrollOffset was incorrect and caused the bug.
+        const x = e.clientX - rect.left;
         return getTimeFromX(x);
     };
 
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
         const time = getMouseEventTime(e);
         const x = getXFromTime(time);
+        const y = e.nativeEvent.offsetY;
 
         // Check for suggestion click first
         const suggestionHitRadius = 8;
         for (const suggestion of suggestions) {
             const suggestionX = getXFromTime(suggestion.time);
             const suggestionY = 8;
-            const distance = Math.sqrt(Math.pow(x - suggestionX, 2) + Math.pow(e.nativeEvent.offsetY - suggestionY, 2));
+            const distance = Math.sqrt(Math.pow(x - suggestionX, 2) + Math.pow(y - suggestionY, 2));
             if (distance < suggestionHitRadius) {
                 onSuggestionClick(suggestion);
                 return;
@@ -272,11 +273,10 @@ const Timeline: React.FC<TimelineProps> = ({
     };
     
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!containerRef.current) return;
+        if (!containerRef.current || !scrollerRef.current) return;
         const time = Math.max(0, Math.min(duration, getMouseEventTime(e)));
         setMouseTime(time);
         
-        const scrollOffset = e.currentTarget.parentElement?.scrollLeft || 0;
         const currentX = getXFromTime(time);
         const yOnCanvas = e.nativeEvent.offsetY;
         
@@ -292,11 +292,14 @@ const Timeline: React.FC<TimelineProps> = ({
                 break;
             }
         }
+
         if (foundSuggestion) {
+            // BUGFIX: Calculate tooltip position relative to the scroller viewport, not the canvas.
+            const scrollerRect = scrollerRef.current.getBoundingClientRect();
             setTooltip({
                 content: foundSuggestion.reason,
-                x: currentX - scrollOffset + 15,
-                y: yOnCanvas + 15
+                x: e.clientX - scrollerRect.left,
+                y: e.clientY - scrollerRect.top
             });
         } else {
             setTooltip(null);
@@ -304,18 +307,23 @@ const Timeline: React.FC<TimelineProps> = ({
 
         // Cursor and Hover Logic
         let newHoveredMarkerId = null;
-        let cursor = 'pointer';
+        let cursor = 'default';
+        if (suggestions.length > 0 && foundSuggestion) {
+            cursor = 'pointer';
+        }
+
         const handleHitboxWidth = 16;
         for (const marker of markers) {
              const startX = getXFromTime(marker.t_start_s);
              const endX = getXFromTime(marker.t_end_s);
-             if (currentX > startX - handleHitboxWidth/2 && currentX < endX + handleHitboxWidth/2) {
+             if (currentX > startX && currentX < endX) { // check body first
                  newHoveredMarkerId = marker.id;
-                 if (currentX < startX + handleHitboxWidth/2 || currentX > endX - handleHitboxWidth/2) {
-                     cursor = 'ew-resize';
-                 } else {
-                     cursor = interactionState.current.isDragging ? 'grabbing' : 'grab';
-                 }
+                 cursor = interactionState.current.isDragging ? 'grabbing' : 'grab';
+                 break;
+             }
+             if (Math.abs(currentX - startX) < handleHitboxWidth/2 || Math.abs(currentX - endX) < handleHitboxWidth/2) {
+                 newHoveredMarkerId = marker.id;
+                 cursor = 'ew-resize';
                  break;
              }
         }
@@ -324,7 +332,6 @@ const Timeline: React.FC<TimelineProps> = ({
             setHoveredMarkerId(newHoveredMarkerId);
         }
         
-
         // Dragging Logic
         if (!interactionState.current.isDragging) return;
         
@@ -376,13 +383,14 @@ const Timeline: React.FC<TimelineProps> = ({
 
     return (
         <div 
+            ref={scrollerRef}
             className="w-full h-full cursor-default overflow-x-auto bg-gray-900 relative"
             onWheel={handleWheel}
         >
              {tooltip && (
                 <div 
                     className="absolute z-10 p-2 text-xs text-white bg-gray-900 border border-gray-600 rounded-md shadow-lg pointer-events-none max-w-xs"
-                    style={{ left: tooltip.x, top: tooltip.y, transform: 'translateY(10px)' }}
+                    style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(15px, 15px)' }}
                 >
                     {tooltip.content}
                 </div>
