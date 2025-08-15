@@ -382,7 +382,7 @@ const Timeline: React.FC<TimelineProps> = ({
                 <canvas ref={canvasRef} style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%' }} />
                  {hoveredSuggestion && (
                     <div 
-                        className="absolute z-10 p-2 text-xs text-white bg-gray-800 border border-gray-600 rounded-md shadow-lg pointer-events-none w-48"
+                        className="absolute z-10 p-2 text-xs text-white bg-gray-800 border border-gray-600 rounded-md shadow-lg pointer-events-none w-56"
                         style={{ 
                             left: `${getXFromTime(hoveredSuggestion.time)}px`, 
                             top: '18px', // Position below the diamond
@@ -391,12 +391,17 @@ const Timeline: React.FC<TimelineProps> = ({
                             transition: 'opacity 0.1s ease-in-out'
                         }}
                     >
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2">
                             <div className={`w-2.5 h-2.5 rounded-full ${hoveredSuggestion.gems ? GEMS_COLORS[hoveredSuggestion.gems] : 'bg-gray-500'}`}></div>
                             <span className="font-bold text-gray-100">{hoveredSuggestion.gems || 'Suggestion'}</span>
                             <span className="text-gray-400 font-mono ml-auto">@{hoveredSuggestion.time.toFixed(1)}s</span>
                         </div>
-                        <p className="text-gray-300">{hoveredSuggestion.reason}</p>
+                        <div className="mt-1 space-y-1 text-gray-300">
+                            {hoveredSuggestion.sync_notes && (
+                                <p><span className="font-semibold text-gray-400 mr-1">Sync:</span>{hoveredSuggestion.sync_notes}</p>
+                            )}
+                            <p><span className="font-semibold text-gray-400 mr-1">Audio:</span>{hoveredSuggestion.reason}</p>
+                        </div>
                     </div>
                 )}
             </div>

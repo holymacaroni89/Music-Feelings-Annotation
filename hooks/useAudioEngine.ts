@@ -4,6 +4,7 @@ import { WaveformPoint } from '../types';
 
 const generateAdvancedWaveformData = async (audioBuffer: AudioBuffer, targetPoints: number = 2000): Promise<WaveformPoint[]> => {
     return new Promise(resolve => {
+        // Use setTimeout to unblock the main thread during this heavy computation
         setTimeout(async () => {
             const rawData = audioBuffer.getChannelData(0);
             const totalSamples = rawData.length;
@@ -15,25 +16,61 @@ const generateAdvancedWaveformData = async (audioBuffer: AudioBuffer, targetPoin
 
             const waveformData: WaveformPoint[] = [];
 
-            await tf.tidy(() => {
+            // Manually track all tensors to ensure they are disposed
+            const tensorsToDispose: tf.Tensor[] = [];
+
+            try {
                 const audioTensor = tf.tensor1d(rawData);
+                tensorsToDispose.push(audioTensor);
+
                 const stft = tf.signal.stft(audioTensor, fftSize, hopLength);
-                const mags = tf.abs(stft);
-
-                // Calculate Spectral Centroid
-                const freqs = tf.linspace(0, sampleRate / 2, mags.shape[1]);
-                const weightedFreqs = mags.mul(freqs);
-                const sumWeightedFreqs = weightedFreqs.sum(1);
-                const sumMags = mags.sum(1).add(1e-6); // add epsilon to avoid div by zero
-                const centroids = sumWeightedFreqs.div(sumMags);
-                const normalizedCentroids = centroids.div(sampleRate / 2);
-
-                // Calculate Spectral Flux
-                const magsPadded = tf.pad(mags, [[1, 0], [0, 0]]); // Pad start with zeros for first frame
-                const magsDiff = mags.sub(magsPadded.slice([0, 0], [mags.shape[0], mags.shape[1]]));
-                const flux = tf.sqrt(tf.sum(tf.square(tf.relu(magsDiff)), 1));
+                tensorsToDispose.push(stft);
                 
-                // Get JS arrays from tensors
+                const mags = tf.abs(stft);
+                tensorsToDispose.push(mags);
+
+                // --- Calculate Spectral Centroid ---
+                const freqs = tf.linspace(0, sampleRate / 2, mags.shape[1]);
+                tensorsToDispose.push(freqs);
+
+                const weightedFreqs = mags.mul(freqs);
+                tensorsToDispose.push(weightedFreqs);
+
+                const sumWeightedFreqs = weightedFreqs.sum(1);
+                tensorsToDispose.push(sumWeightedFreqs);
+
+                const sumMags = mags.sum(1).add(1e-6); // add epsilon to avoid div by zero
+                tensorsToDispose.push(sumMags);
+
+                const centroids = sumWeightedFreqs.div(sumMags);
+                tensorsToDispose.push(centroids);
+
+                const normalizedCentroids = centroids.div(sampleRate / 2);
+                tensorsToDispose.push(normalizedCentroids);
+
+                // --- Calculate Spectral Flux ---
+                const magsPadded = tf.pad(mags, [[1, 0], [0, 0]]);
+                tensorsToDispose.push(magsPadded);
+                
+                const magsSliced = magsPadded.slice([0, 0], [mags.shape[0], mags.shape[1]]);
+                tensorsToDispose.push(magsSliced);
+
+                const magsDiff = mags.sub(magsSliced);
+                tensorsToDispose.push(magsDiff);
+
+                const reluDiff = tf.relu(magsDiff);
+                tensorsToDispose.push(reluDiff);
+
+                const squaredDiff = tf.square(reluDiff);
+                tensorsToDispose.push(squaredDiff);
+                
+                const sumSquaredDiff = tf.sum(squaredDiff, 1);
+                tensorsToDispose.push(sumSquaredDiff);
+
+                const flux = tf.sqrt(sumSquaredDiff);
+                tensorsToDispose.push(flux);
+                
+                // Get JS arrays from tensors now, before they are disposed
                 const centroidsArray = Array.from(normalizedCentroids.dataSync());
                 const fluxArray = Array.from(flux.dataSync());
                 
@@ -68,7 +105,13 @@ const generateAdvancedWaveformData = async (audioBuffer: AudioBuffer, targetPoin
                 } else {
                     resolve(waveformData);
                 }
-            });
+
+            } finally {
+                // GUARANTEE that all tensors are disposed, preventing the memory leak
+                for (const tensor of tensorsToDispose) {
+                    tensor.dispose();
+                }
+            }
         }, 50);
     });
 };
