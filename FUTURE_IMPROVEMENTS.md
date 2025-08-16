@@ -1,99 +1,99 @@
-# Future Improvements & Technical Roadmap
+# Zukünftige Verbesserungen & Technischer Fahrplan
 
-This document outlines potential areas for future development to enhance the application's scalability, robustness, and maintainability. While the current architecture is well-suited for its scope, these suggestions provide a path forward as the project's complexity grows.
+Dieses Dokument skizziert potenzielle Bereiche für die zukünftige Entwicklung, um die Skalierbarkeit, Robustheit und Wartbarkeit der Anwendung zu verbessern. Obwohl die aktuelle Architektur für ihren Umfang gut geeignet ist, bieten diese Vorschläge einen Weg nach vorn, wenn die Komplexität des Projekts wächst.
 
 ---
 
-## Plan: UI/UX Overhaul with Vite, Tailwind CSS, and shadcn/ui
+## Plan: UI/UX-Überarbeitung mit Vite, Tailwind CSS und shadcn/ui
 
-This section outlines the detailed, phased plan to migrate the application's UI to a modern, professional, and highly maintainable stack. This is the most impactful architectural improvement we can make.
+Dieser Abschnitt beschreibt den detaillierten, schrittweisen Plan zur Migration der Benutzeroberfläche der Anwendung auf einen modernen, professionellen und hochgradig wartbaren Stack. Dies ist die wirkungsvollste architektonische Verbesserung, die wir vornehmen können.
 
-### 1. Strategic Rationale
+### 1. Strategische Begründung
 
--   **Professional Aesthetics**: Move from a functional UI to a polished, world-class design system provided by `shadcn/ui`.
--   **Developer Experience (DX)**: Introduce `Vite` for a lightning-fast development server with instant updates (HMR).
--   **Maintainability & Scalability**: `Tailwind CSS` utility classes and component-based styling make the UI consistent and easy to modify.
--   **Performance**: `Vite` produces highly optimized builds, and `Tailwind CSS` purges unused styles, resulting in minimal CSS payloads.
--   **Accessibility**: `shadcn/ui` components are built with accessibility (WAI-ARIA) as a first-class citizen.
+-   **Professionelle Ästhetik**: Übergang von einer funktionalen Benutzeroberfläche zu einem ausgefeilten, erstklassigen Designsystem, das von `shadcn/ui` bereitgestellt wird.
+-   **Entwicklererfahrung (DX)**: Einführung von `Vite` für einen blitzschnellen Entwicklungsserver mit sofortigen Updates (HMR).
+-   **Wartbarkeit & Skalierbarkeit**: `Tailwind CSS` Utility-Klassen und komponentenbasiertes Styling machen die Benutzeroberfläche konsistent und leicht zu ändern.
+-   **Leistung**: `Vite` erzeugt hochoptimierte Builds, und `Tailwind CSS` entfernt ungenutzte Stile, was zu minimalen CSS-Payloads führt.
+-   **Barrierefreiheit**: `shadcn/ui`-Komponenten werden mit Barrierefreiheit (WAI-ARIA) als erstklassigem Bürger entwickelt.
 
-### 2. The New Stack
+### 2. Der neue Stack
 
--   **`Vite`**: The build tool. It will compile our TypeScript/React code, process our CSS, and serve a fast development environment.
--   **`Tailwind CSS`**: The styling engine. A utility-first CSS framework that allows us to build any design directly in our markup.
--   **`shadcn/ui`**: The component library. It's not a typical library; we use its CLI to copy well-architected, fully-styled React components (built with Tailwind) directly into our project, giving us total control over their code.
+-   **`Vite`**: Das Build-Tool. Es wird unseren TypeScript/React-Code kompilieren, unser CSS verarbeiten und eine schnelle Entwicklungsumgebung bereitstellen.
+-   **`Tailwind CSS`**: Die Styling-Engine. Ein Utility-First-CSS-Framework, das es uns ermöglicht, jedes Design direkt in unserem Markup zu erstellen.
+-   **`shadcn/ui`**: Die Komponentenbibliothek. Es ist keine typische Bibliothek; wir verwenden ihre CLI, um gut architektonisch gestaltete, vollständig gestylte React-Komponenten (erstellt mit Tailwind) direkt in unser Projekt zu kopieren, was uns die volle Kontrolle über ihren Code gibt.
 
-### 3. Phased Migration Plan
+### 3. Gestufter Migrationsplan
 
-This process is designed to be executed in deliberate stages to minimize disruption and ensure quality.
+Dieser Prozess ist so konzipiert, dass er in bewussten Phasen durchgeführt wird, um Unterbrechungen zu minimieren und Qualität zu gewährleisten.
 
-#### Phase 0: Project Foundation Setup
+#### Phase 0: Einrichtung der Projektgrundlage (✅ Abgeschlossen)
 
-This is a one-time setup that establishes the new development environment. The application will not look different after this phase, but the underlying build process will be completely new.
+Dies war eine einmalige Einrichtung, die die neue Entwicklungsumgebung etabliert hat. Die Anwendung sieht nach dieser Phase nicht anders aus, aber der zugrunde liegende Build-Prozess ist völlig neu.
 
-1.  **Introduce Vite**:
-    -   Create a `package.json` to manage dependencies.
-    -   Add `vite`, `react`, `react-dom`, `typescript` and their corresponding types as dependencies.
-    -   Create `vite.config.ts` to configure the React plugin.
-2.  **Integrate Tailwind CSS**:
-    -   Add `tailwindcss`, `postcss`, and `autoprefixer` as development dependencies.
-    -   Create `tailwind.config.js` and `postcss.config.js`.
-    -   Create a global `index.css` file and include the Tailwind `@tailwind` directives.
-3.  **Restructure Project Files**:
-    -   Move all existing `.tsx`, `.ts`, and `.html` files into a `src/` directory.
-    -   Update `index.html` to be a standard Vite entry point, linking to `src/index.tsx` via a `<script type="module">` tag.
-    -   Remove the Tailwind CDN script and the `importmap` from `index.html`. All dependencies will now be managed by Vite via `package.json`.
+1.  **Vite eingeführt**:
+    -   Eine `package.json` zur Verwaltung der Abhängigkeiten wurde erstellt.
+    -   `vite`, `react`, `react-dom`, `typescript` und ihre entsprechenden Typen wurden als Abhängigkeiten hinzugefügt.
+    -   `vite.config.ts` wurde erstellt, um das React-Plugin zu konfigurieren.
+2.  **Tailwind CSS integriert**:
+    -   `tailwindcss`, `postcss` und `autoprefixer` wurden als Entwicklungsabhängigkeiten hinzugefügt.
+    -   `tailwind.config.js` und `postcss.config.js` wurden erstellt.
+    -   Eine globale `index.css`-Datei wurde erstellt und die Tailwind `@tailwind`-Direktiven wurden eingefügt.
+3.  **Projektdateien restrukturiert**:
+    -   Alle vorhandenen `.tsx`-, `.ts`- und `.html`-Dateien wurden in ein `src/`-Verzeichnis verschoben.
+    -   `index.html` wurde zu einem Standard-Vite-Einstiegspunkt aktualisiert, der über ein `<script type="module">`-Tag auf `src/index.tsx` verweist.
+    -   Das Tailwind CDN-Skript und die `importmap` wurden aus `index.html` entfernt. Alle Abhängigkeiten werden jetzt von Vite über `package.json` verwaltet.
 
-#### Phase 1: Global Styles & Core Component Implementation
+#### Phase 1: Globale Stile & Implementierung von Kernkomponenten
 
-With the foundation in place, we will now define the visual identity of the application.
+Mit der geschaffenen Grundlage werden wir nun die visuelle Identität der Anwendung definieren.
 
-1.  **Configure `tailwind.config.js`**:
-    -   Define a new, modern color palette (e.g., using Tailwind's "slate" or "zinc" colors for backgrounds and text, and a vibrant color like "blue" or "violet" for accents).
-    -   Configure the font family to use a modern sans-serif font like "Inter".
-2.  **Apply Global Styles**:
-    -   Set the base background color, text color, and font on the `<body>` tag in `index.css`.
-3.  **Initialize `shadcn/ui`**:
-    -   Run the `shadcn/ui` init command to set up `components.json` and create the `lib/utils.ts` and `components/ui` directory.
-4.  **Add Core Components**:
-    -   Use the `shadcn/ui` CLI to add the first set of essential, un-styled UI components.
+1.  **Konfigurieren von `tailwind.config.js`**:
+    -   Definieren einer neuen, modernen Farbpalette (z. B. unter Verwendung der "slate"- oder "zinc"-Farben von Tailwind für Hintergründe und Text und einer lebendigen Farbe wie "blue" oder "violet" für Akzente).
+    -   Konfigurieren der Schriftfamilie zur Verwendung einer modernen serifenlosen Schrift wie "Inter".
+2.  **Anwenden globaler Stile**:
+    -   Festlegen der Basishintergrundfarbe, Textfarbe und Schriftart auf dem `<body>`-Tag in `index.css`.
+3.  **Initialisieren von `shadcn/ui`**:
+    -   Ausführen des `shadcn/ui` init-Befehls, um `components.json` einzurichten und das `lib/utils.ts`- und `components/ui`-Verzeichnis zu erstellen.
+4.  **Hinzufügen von Kernkomponenten**:
+    -   Verwenden der `shadcn/ui` CLI, um den ersten Satz wesentlicher, ungestylter UI-Komponenten hinzuzufügen.
     -   `npx shadcn-ui@latest add button`
     -   `npx shadcn-ui@latest add input`
     -   `npx shadcn-ui@latest add select`
     -   `npx shadcn-ui@latest add slider`
-    -   `npx shadcn-ui@latest add dialog` (for our modals)
+    -   `npx shadcn-ui@latest add dialog` (für unsere Modals)
     -   `npx shadcn-ui@latest add tooltip`
 
-#### Phase 2: Layout & Component Substitution
+#### Phase 2: Layout & Komponentenaustausch
 
-In this phase, we will gut the old styling and replace it with the new system, component by component.
+In dieser Phase werden wir das alte Styling entfernen und es Komponente für Komponente durch das neue System ersetzen.
 
-1.  **Rebuild Main Layout**:
-    -   Refactor `App.tsx` and its main children (`Header.tsx`, `Workspace.tsx`, `Footer.tsx`, `LabelPanel.tsx`) to use Tailwind's flexbox and grid utilities for layout instead of custom CSS.
-2.  **Component Swap**:
-    -   Systematically go through each component.
-    -   Replace every `<button>` element with the new `<Button>` component from `components/ui/button`.
-    -   Replace `<input type="range">` with the new `<Slider>` component.
-    -   Replace the custom `Modal.tsx` with `shadcn/ui`'s `<Dialog>`.
-    -   Update all other form elements (`select`, `textarea`, `checkbox`) to use their `shadcn/ui` equivalents or style them with Tailwind classes for consistency.
-3.  **Icon Standardization**:
-    -   Replace the custom-built SVG icons with a standard, high-quality icon library like `lucide-react`. This ensures visual consistency.
+1.  **Hauptlayout neu aufbauen**:
+    -   Refactoring von `App.tsx` und seinen Hauptkindern (`Header.tsx`, `Workspace.tsx`, `Footer.tsx`, `LabelPanel.tsx`), um Tailwinds Flexbox- und Grid-Utilities für das Layout anstelle von benutzerdefiniertem CSS zu verwenden.
+2.  **Komponententausch**:
+    -   Systematisches Durchgehen jeder Komponente.
+    -   Ersetzen jedes `<button>`-Elements durch die neue `<Button>`-Komponente aus `components/ui/button`.
+    -   Ersetzen von `<input type="range">` durch die neue `<Slider>`-Komponente.
+    -   Ersetzen der benutzerdefinierten `Modal.tsx` durch `<Dialog>` von `shadcn/ui`.
+    -   Aktualisieren aller anderen Formularelemente (`select`, `textarea`, `checkbox`), um ihre `shadcn/ui`-Äquivalente zu verwenden oder sie mit Tailwind-Klassen für Konsistenz zu stylen.
+3.  **Icon-Standardisierung**:
+    -   Ersetzen der benutzerdefinierten SVG-Icons durch eine standardmäßige, hochwertige Icon-Bibliothek wie `lucide-react`. Dies gewährleistet visuelle Konsistenz.
 
-#### Phase 3: Complex & Custom Component Refactoring
+#### Phase 3: Refactoring komplexer & benutzerdefinierter Komponenten
 
-This phase tackles the most unique and challenging parts of the UI.
+Diese Phase befasst sich mit den einzigartigsten und anspruchsvollsten Teilen der Benutzeroberfläche.
 
-1.  **Timeline**: The core canvas rendering logic in `Timeline.tsx` will remain unchanged. However, the surrounding `div` containers and any overlay elements (like the tooltips) will be rebuilt and styled using Tailwind utilities to integrate seamlessly with the new design.
-2.  **MarkerList**: Refactor `MarkerList.tsx`. The list items will be rebuilt using flexbox, and their states (selected, hovered) will be managed with Tailwind's state variants (`hover:bg-slate-800`, `data-[state=selected]:bg-blue-900`).
-3.  **LabelPanel**: Overhaul `LabelPanel.tsx` to be a clean form composed entirely of the new `shadcn/ui` components (`Input`, `Slider`, `Select`, etc.), ensuring it has a professional and consistent look and feel.
+1.  **Timeline**: Die Kern-Canvas-Rendering-Logik in `Timeline.tsx` bleibt unverändert. Die umgebenden `div`-Container und alle Overlay-Elemente (wie die Tooltips) werden jedoch neu erstellt und mit Tailwind-Utilities gestylt, um sich nahtlos in das neue Design zu integrieren.
+2.  **MarkerList**: Refactoring von `MarkerList.tsx`. Die Listenelemente werden mit Flexbox neu aufgebaut, und ihre Zustände (ausgewählt, darüber geschwebt) werden mit den Zustandsvarianten von Tailwind (`hover:bg-slate-800`, `data-[state=selected]:bg-blue-900`) verwaltet.
+3.  **LabelPanel**: Überarbeitung von `LabelPanel.tsx` zu einem sauberen Formular, das vollständig aus den neuen `shadcn/ui`-Komponenten (`Input`, `Slider`, `Select` usw.) besteht, um ein professionelles und konsistentes Erscheinungsbild zu gewährleisten.
 
-#### Phase 4: Final Polish & Cleanup
+#### Phase 4: Feinschliff & Bereinigung
 
-The final step is to remove all remnants of the old system and ensure the new one is perfect.
+Der letzte Schritt besteht darin, alle Überreste des alten Systems zu entfernen und sicherzustellen, dass das neue perfekt ist.
 
-1.  **Code Cleanup**:
-    -   Delete the old `components/icons.tsx` file in favor of `lucide-react`.
-    -   Search the entire project for any remaining inline `style` attributes or old class names and remove them.
-2.  **Review and Refine**:
-    -   Conduct a full visual review of the application to catch any inconsistencies.
-    -   Test responsiveness on different screen sizes.
-    -   Perform an accessibility check using browser tools to ensure all `shadcn/ui` components are correctly implemented.
+1.  **Code-Bereinigung**:
+    -   Löschen der alten `components/icons.tsx`-Datei zugunsten von `lucide-react`.
+    -   Durchsuchen des gesamten Projekts nach verbleibenden inline-`style`-Attributen oder alten Klassennamen und deren Entfernung.
+2.  **Überprüfung und Verfeinerung**:
+    -   Durchführung einer vollständigen visuellen Überprüfung der Anwendung, um Inkonsistenzen zu erkennen.
+    -   Testen der Reaktionsfähigkeit auf verschiedenen Bildschirmgrößen.
+    -   Durchführung einer Barrierefreiheitsprüfung mit Browser-Tools, um sicherzustellen, dass alle `shadcn/ui`-Komponenten korrekt implementiert sind.

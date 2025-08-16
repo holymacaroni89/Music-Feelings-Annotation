@@ -1,92 +1,95 @@
-# Project Specification: AI-Powered Music Emotion Annotation Tool
+# Projektspezifikation: KI-gestütztes Musik-Emotions-Annotationswerkzeug
 
-This document serves as the complete technical and conceptual blueprint for the Music Emotion Annotation Tool. It captures the project's vision, architecture, and development history to ensure context is preserved for any future development instance.
+Dieses Dokument dient als vollständige technische und konzeptionelle Blaupause für das Musik-Emotions-Annotationswerkzeug. Es erfasst die Vision, Architektur und Entwicklungshistorie des Projekts, um sicherzustellen, dass der Kontext für zukünftige Entwicklungsinstanzen erhalten bleibt.
 
-## 1. Project Vision
+## 1. Projektvision
 
-The core vision is to evolve a manual audio annotation tool into an intelligent, personalized assistant for music emotion recognition (MER). The system is designed as a dynamic dialogue between the user and the AI. An AI provides a robust baseline analysis, which the user then refines. The system, in turn, learns from these refinements to tailor future analyses to the user's unique emotional perception. The ultimate goal is a tool that accelerates the annotation workflow and provides deeper insights by combining objective AI analysis with subjective human experience.
+Die Kernvision besteht darin, ein manuelles Audio-Annotationswerkzeug zu einem intelligenten, personalisierten Assistenten für die Musik-Emotionserkennung (MER) zu entwickeln. Das System ist als dynamischer Dialog zwischen dem Benutzer und der KI konzipiert. Eine KI liefert eine robuste Basisanalyse, die der Benutzer dann verfeinert. Das System lernt wiederum aus diesen Verfeinerungen, um zukünftige Analysen auf die einzigartige emotionale Wahrnehmung des Benutzers zuzuschneiden. Das ultimative Ziel ist ein Werkzeug, das den Annotations-Workflow beschleunigt und durch die Kombination von objektiver KI-Analyse mit subjektiver menschlicher Erfahrung tiefere Einblicke bietet.
 
-## 2. Software Architecture
+## 2. Softwarearchitektur
 
-### 2.1. Frontend Stack
--   **Framework**: React (with TypeScript)
+### 2.1. Frontend-Stack
+-   **Framework**: React (mit TypeScript)
+-   **Build-Tool**: Vite
+-   **Abhängigkeitsmanagement**: npm / `package.json`
 -   **Styling**: TailwindCSS
--   **Core Libraries**:
-    -   `@google/genai`: For interaction with the Google Gemini AI model.
-    -   `@tensorflow/tfjs`: For in-browser training and execution of the personalized machine learning model.
-    -   **Web Audio API**: For all audio decoding, playback, and analysis.
+-   **Kernbibliotheken**:
+    -   `@google/genai`: Für die Interaktion mit dem Google Gemini KI-Modell.
+    -   `@tensorflow/tfjs`: Für das Training und die Ausführung des personalisierten Machine-Learning-Modells im Browser.
+    -   **Web Audio API**: Für die gesamte Audio-Dekodierung, -Wiedergabe und -Analyse.
 
-### 2.2. Component Structure
-The UI is broken down into logical, reusable components to maintain separation of concerns and simplify development.
--   **`App.tsx`**: The main application component, acting as an **Orchestrator**. It holds no UI logic itself but initializes the core logic hooks and passes state and handlers down to the child UI components. It also defines and renders complex modal content.
--   **`components/Header.tsx`**: Renders the entire top bar, including audio loading, profile management, playback controls, and AI action buttons.
--   **`components/Workspace.tsx`**: Renders the main middle section, containing the visualization settings panel, the `Timeline`, and the `MarkerList`.
--   **`components/Footer.tsx`**: Renders the bottom bar with the save indicator and Import/Export buttons.
--   **`components/Timeline.tsx`**: The core interactive component. A canvas-based view responsible for drawing the waveform, markers, playhead, and AI suggestions, and handling all mouse interactions (scrubbing, dragging, resizing).
--   **`components/LabelPanel.tsx`**: The form on the right side for editing the details of a selected marker.
--   **`components/MarkerList.tsx`**: The list of created markers below the timeline.
--   **`components/Modal.tsx`**: A reusable, non-blocking modal dialog used for user input, including profile creation and API key management.
+### 2.2. Komponentenstruktur
+Die Benutzeroberfläche ist in logische, wiederverwendbare Komponenten unterteilt, um die Trennung der Belange zu wahren und die Entwicklung zu vereinfachen. Der gesamte Quellcode befindet sich im `src/`-Verzeichnis.
+-   **`App.tsx`**: Die Hauptanwendungskomponente, die als **Orchestrator** fungiert. Sie enthält selbst keine UI-Logik, sondern initialisiert die Kernlogik-Hooks und gibt den Zustand und die Handler an die untergeordneten UI-Komponenten weiter. Sie definiert und rendert auch komplexe modale Inhalte.
+-   **`components/Header.tsx`**: Rendert die gesamte obere Leiste, einschließlich Audio-Laden, Profilverwaltung, Wiedergabesteuerungen und KI-Aktionsschaltflächen.
+-   **`components/Workspace.tsx`**: Rendert den Hauptmittelteil, der das Visualisierungseinstellungsfenster, die `Timeline` und die `MarkerList` enthält.
+-   **`components/Footer.tsx`**: Rendert die untere Leiste mit dem Speicherindikator und den Import/Export-Schaltflächen.
+-   **`components/Timeline.tsx`**: Die zentrale interaktive Komponente. Eine auf Canvas basierende Ansicht, die für das Zeichnen der Wellenform, der Marker, des Wiedergabekopfes und der KI-Vorschläge sowie für die Handhabung aller Mausinteraktionen (Scrubbing, Ziehen, Größenänderung) verantwortlich ist.
+-   **`components/LabelPanel.tsx`**: Das Formular auf der rechten Seite zur Bearbeitung der Details eines ausgewählten Markers.
+-   **`components/MarkerList.tsx`**: Die Liste der erstellten Marker unterhalb der Zeitleiste.
+-   **`components/Modal.tsx`**: Ein wiederverwendbarer, nicht blockierender modaler Dialog, der für Benutzereingaben wie die Profilerstellung und die Verwaltung von API-Schlüsseln verwendet wird.
 
-### 2.3. Logic Abstraction (Custom Hooks)
-To keep `App.tsx` lean and maintain separation of concerns, all business logic is encapsulated in custom React Hooks.
--   **`hooks/useAudioEngine.ts`**: Manages all aspects of the Web Audio API.
-    -   **Responsibilities**: Creating the `AudioContext`, decoding audio files, managing playback state (`isPlaying`, `currentTime`), controlling volume, and generating the spectral waveform data from the `AudioBuffer`.
--   **`hooks/useAnnotationSystem.ts`**: The "brain" of the application.
-    -   **Responsibilities**: Managing the core application state related to annotations: `markers`, `profiles`, `songContext`, and `selectedMarkerId`. It also manages all interactions with AI and third-party services, including triggering Gemini analysis, managing the Genius search flow, handling API key state, collecting training data, and initiating the training of the personal TensorFlow.js model.
+### 2.3. Logikabstraktion (Custom Hooks)
+Um `App.tsx` schlank zu halten und die Trennung der Belange zu wahren, ist die gesamte Geschäftslogik in benutzerdefinierten React Hooks gekapselt.
+-   **`hooks/useAudioEngine.ts`**: Verwaltet alle Aspekte der Web Audio API.
+    -   **Verantwortlichkeiten**: Erstellen des `AudioContext`, Dekodieren von Audiodateien, Verwalten des Wiedergabezustands (`isPlaying`, `currentTime`), Steuern der Lautstärke und Generieren der spektralen Wellenformdaten aus dem `AudioBuffer`.
+-   **`hooks/useAnnotationSystem.ts`**: Das "Gehirn" der Anwendung.
+    -   **Verantwortlichkeiten**: Verwalten des zentralen Anwendungszustands in Bezug auf Annotationen: `markers`, `profiles`, `songContext` und `selectedMarkerId`. Es verwaltet auch alle Interaktionen mit KI und Drittanbieterdiensten, einschließlich des Auslösens der Gemini-Analyse, der Verwaltung des Genius-Suchflusses, der Handhabung des API-Schlüsselzustands, des Sammelns von Trainingsdaten und des Initiierens des Trainings des persönlichen TensorFlow.js-Modells.
 
-### 2.4. Data Persistence
--   **`localStorage`** is used for all session data to ensure work is not lost on reload.
-    -   **`AUTOSAVE_KEY`**: Stores the main `AppState` (current track, markers, profiles, API keys, and song context data).
-    -   **`TRAINING_DATA_PREFIX`**: Stores `TrainingSample[]` arrays, one for each user profile.
-    -   **`MODEL_STORAGE_KEY_PREFIX`**: Stores the trained TensorFlow.js model, one for each user profile.
+### 2.4. Datenpersistenz
+-   **`localStorage`** wird für alle Sitzungsdaten verwendet, um sicherzustellen, dass die Arbeit bei einem Neuladen nicht verloren geht.
+    -   **`AUTOSAVE_KEY`**: Speichert den Haupt-`AppState` (aktueller Track, Marker, Profile, API-Schlüssel und Songkontextdaten).
+    -   **`TRAINING_DATA_PREFIX`**: Speichert `TrainingSample[]`-Arrays, eines für jedes Benutzerprofil.
+    -   **`MODEL_STORAGE_KEY_PREFIX`**: Speichert das trainierte TensorFlow.js-Modell, eines für jedes Benutzerprofil.
 
-## 3. Feature Breakdown
+## 3. Feature-Aufschlüsselung
 
-### 3.1. Third-Party Services Integration
-#### Genius API for Rich Song Context
--   **Implementation**: `services/geniusService.ts`
--   **API Key Management**: The user provides their own "Client Access Token" from Genius via a settings modal. The key is persisted in `localStorage`.
--   **Two-Stage UI Workflow**: To maximize usability and data quality, the integration uses a two-stage modal.
-    1.  **Search & Select**: The user searches for a song. The app queries the Genius `/search` endpoint and displays a list of results.
-    2.  **Review & Confirm**: Upon selecting a result, the app makes multiple parallel requests: it calls the `/songs/:id` endpoint for metadata, scrapes the song's web page for raw lyrics, and critically, calls the `/referents` endpoint to retrieve all line-specific community annotations. It then displays a rich detail view containing all of this information.
--   **Data Compilation**: The service programmatically merges the scraped lyrics with the community annotations, inserting each annotation directly after its corresponding line. Only after user confirmation are all the collected and merged details compiled into a single, formatted `songContext` string, which is then saved and associated with the current audio track.
--   **Technical Note on CORS**: Due to browser security policies, all requests are routed through a public CORS proxy (`corsproxy.io`). This applies to both API calls and HTML page scraping.
+### 3.1. Integration von Drittanbieterdiensten
+#### Genius API für reichhaltigen Songkontext
+-   **Implementierung**: `services/geniusService.ts`
+-   **API-Schlüsselverwaltung**: Der Benutzer gibt seinen eigenen "Client Access Token" von Genius über ein Einstellungsmodal an. Der Schlüssel wird im `localStorage` gespeichert.
+-   **Zweistufiger UI-Workflow**: Um die Benutzerfreundlichkeit und Datenqualität zu maximieren, verwendet die Integration ein zweistufiges Modal.
+    1.  **Suchen & Auswählen**: Der Benutzer sucht nach einem Song. Die App fragt den Genius `/search`-Endpunkt ab und zeigt eine Ergebnisliste an.
+    2.  **Überprüfen & Bestätigen**: Bei Auswahl eines Ergebnisses führt die App mehrere parallele Anfragen aus: Sie ruft den `/songs/:id`-Endpunkt für Metadaten auf, scrapt die Webseite des Songs für die reinen Texte und, ganz entscheidend, ruft den `/referents`-Endpunkt auf, um alle zeilenspezifischen Community-Anmerkungen abzurufen. Anschließend wird eine reichhaltige Detailansicht mit all diesen Informationen angezeigt.
+-   **Datenkompilierung**: Der Dienst fügt die gescrapten Texte programmgesteuert mit den Community-Anmerkungen zusammen und fügt jede Anmerkung direkt nach ihrer entsprechenden Zeile ein. Erst nach Benutzerbestätigung werden alle gesammelten und zusammengeführten Details zu einem einzigen, formatierten `songContext`-String kompiliert, der dann gespeichert und mit dem aktuellen Audiotrack verknüpft wird.
+-   **Technischer Hinweis zu CORS**: Aufgrund von Browser-Sicherheitsrichtlinien werden alle Anfragen über einen öffentlichen CORS-Proxy (`corsproxy.io`) geleitet. Dies gilt sowohl für API-Aufrufe als auch für das Scrapen von HTML-Seiten.
 
-### 3.2. AI Suggestion Engine (Two-Tier Model)
-This is the core innovation of the application. It combines a powerful general AI with a small, adaptive personal AI.
+### 3.2. KI-Vorschlags-Engine (Zwei-Ebenen-Modell)
+Dies ist die Kerninnovation der Anwendung. Sie kombiniert eine leistungsstarke allgemeine KI mit einer kleinen, anpassungsfähigen persönlichen KI.
 
-#### Tier 1: Base MER Model (Gemini)
--   **Implementation**: `services/geminiService.ts`
--   **Process**:
-    1.  The audio waveform is summarized into a compact text format.
-    2.  This summary, along with the rich `songContext` string fetched from Genius (which now includes line-by-line annotations), is sent to the `gemini-2.5-flash` model.
-    3.  A detailed system prompt instructs the AI to act as an MIR/MER expert and to leverage all parts of the provided context (metadata, general annotations, lyrics, and line-specific interpretations) for a deeper analysis.
-    4.  A strict `responseSchema` is used to guarantee the output is a valid JSON containing a list of `MerSuggestion` objects.
--   **Output**: A rich set of suggestions including `time`, `valence`, `arousal`, `intensity`, `confidence`, a `reason` for the suggestion, and predictions for `gems`, `trigger`, and `sync_notes`.
+#### Ebene 1: Basis-MER-Modell (Gemini)
+-   **Implementierung**: `services/geminiService.ts`
+-   **Prozess**:
+    1.  Die Audio-Wellenform wird in ein kompaktes Textformat zusammengefasst.
+    2.  Diese Zusammenfassung wird zusammen mit dem reichhaltigen `songContext`-String, der von Genius abgerufen wurde (und nun zeilenweise Anmerkungen enthält), an das `gemini-2.5-flash`-Modell gesendet.
+    3.  Ein detaillierter System-Prompt weist die KI an, als Experte für MIR/MER zu agieren und alle Teile des bereitgestellten Kontexts (Metadaten, allgemeine Anmerkungen, Texte und zeilenspezifische Interpretationen) für eine tiefere Analyse zu nutzen.
+    4.  Ein striktes `responseSchema` wird verwendet, um sicherzustellen, dass die Ausgabe ein gültiges JSON ist, das eine Liste von `MerSuggestion`-Objekten enthält.
+-   **Ausgabe**: Ein reichhaltiger Satz von Vorschlägen, einschließlich `time`, `valence`, `arousal`, `intensity`, `confidence`, eine `reason` für den Vorschlag und Vorhersagen für `gems`, `trigger` und `sync_notes`.
 
-#### Tier 2: Personalized Layer (TensorFlow.js)
--   **Implementation**: `services/mlService.ts` and `services/trainingService.ts`.
--   **Process**:
-    1.  **Data Collection**: Whenever a user creates or edits a marker, a `TrainingSample` is created. It pairs the Base Model's prediction (input) with the user's final annotation (output). This data is saved per-profile.
-    2.  **Training**: When the user clicks "Refine Profile" (and has enough samples), `mlService.ts` creates a small sequential neural network with TensorFlow.js. This model is trained *only* on the user's collected data.
-    3.  **Inference**: Once a personal model is trained and loaded for a profile, the analysis workflow changes. The suggestions from the Base Model (Tier 1) are passed through the personal model (Tier 2), which corrects the `valence` and `arousal` values before they are displayed to the user.
+#### Ebene 2: Personalisierte Schicht (TensorFlow.js)
+-   **Implementierung**: `services/mlService.ts` und `services/trainingService.ts`.
+-   **Prozess**:
+    1.  **Datensammlung**: Immer wenn ein Benutzer einen Marker erstellt oder bearbeitet, wird ein `TrainingSample` erstellt. Es paart die Vorhersage des Basismodells (Eingabe) mit der endgültigen Annotation des Benutzers (Ausgabe). Diese Daten werden pro Profil gespeichert.
+    2.  **Training**: Wenn der Benutzer auf "Refine Profile" klickt (und genügend Samples hat), erstellt `mlService.ts` ein kleines sequentielles neuronales Netzwerk mit TensorFlow.js. Dieses Modell wird *nur* mit den gesammelten Daten des Benutzers trainiert.
+    3.  **Inferenz**: Sobald ein persönliches Modell für ein Profil trainiert und geladen ist, ändert sich der Analyse-Workflow. Die Vorschläge des Basismodells (Ebene 1) werden durch das persönliche Modell (Ebene 2) geleitet, das die `valence`- und `arousal`-Werte korrigiert, bevor sie dem Benutzer angezeigt werden.
 
-## 4. Development History
+## 4. Entwicklungshistorie
 
-The application was developed iteratively, building features in logical stages:
-1.  **Stage 1: Foundation**: The basic UI for profiles was created, and the AI was initially represented by a *simulated* model.
-2.  **Stage 2: Data Collection**: Logic implemented to capture and store user annotations as training data.
-3.  **Stage 3: Personalization**: TensorFlow.js integrated to train and apply the personal model, completing the two-tier AI architecture.
-4.  **Stage 4: Real AI Integration**: The simulated AI was replaced with a real-time call to the Google Gemini API.
-5.  **Stage 5: Lyrics & Metadata Automation**: Integrated the Genius API to allow users to search for and automatically import lyrics and song metadata.
-6.  **Stage 6: Advanced Genius Integration & UX Overhaul**: Refactored the Genius feature into a robust, two-stage (search -> review/confirm) workflow. This involved new API calls (`/songs/:id`) and a major UI update to display rich metadata and community annotations, significantly improving the context provided to the Gemini model.
-7.  **Stage 7: Line-by-Line Annotation Fetching**: Enhanced the Genius service to query the `/referents` API endpoint, allowing the tool to fetch and merge detailed community annotations directly into the song lyrics for the ultimate level of AI context.
-8.  **Follow-up Enhancements**:
-    -   Replaced blocking `prompt()` dialogs with a non-blocking `Modal` component.
-    -   Fixed numerous UI/UX bugs in the `Timeline` component.
-    -   Performed a major refactoring from a monolithic `App.tsx` into a clean, component- and hook-based architecture.
+Die Anwendung wurde iterativ entwickelt, wobei die Funktionen in logischen Phasen aufgebaut wurden:
+1.  **Phase 1: Grundlage**: Die grundlegende Benutzeroberfläche für Profile wurde erstellt, und die KI wurde zunächst durch ein *simuliertes* Modell dargestellt.
+2.  **Phase 2: Datensammlung**: Logik zur Erfassung und Speicherung von Benutzerannotationen als Trainingsdaten wurde implementiert.
+3.  **Phase 3: Personalisierung**: TensorFlow.js wurde integriert, um das persönliche Modell zu trainieren und anzuwenden, wodurch die Zwei-Ebenen-KI-Architektur vervollständigt wurde.
+4.  **Phase 4: Echte KI-Integration**: Die simulierte KI wurde durch einen Echtzeitaufruf an die Google Gemini API ersetzt.
+5.  **Phase 5: Automatisierung von Texten & Metadaten**: Die Genius API wurde integriert, damit Benutzer Texte und Song-Metadaten suchen und automatisch importieren können.
+6.  **Phase 6: Erweiterte Genius-Integration & UX-Überarbeitung**: Das Genius-Feature wurde in einen robusten, zweistufigen (Suchen -> Überprüfen/Bestätigen) Workflow refaktoriert. Dies umfasste neue API-Aufrufe (`/songs/:id`) und ein großes UI-Update zur Anzeige von reichhaltigen Metadaten und Community-Anmerkungen, was den Kontext für das Gemini-Modell erheblich verbesserte.
+7.  **Phase 7: Abruf von zeilenweisen Anmerkungen**: Der Genius-Dienst wurde erweitert, um den `/referents`-API-Endpunkt abzufragen, sodass das Tool detaillierte Community-Anmerkungen abrufen und direkt in die Songtexte einfügen kann, um ein Höchstmaß an KI-Kontext zu schaffen.
+8.  **Nachfolgende Verbesserungen**:
+    -   Ersetzen von blockierenden `prompt()`-Dialogen durch eine nicht blockierende `Modal`-Komponente.
+    -   Behebung zahlreicher UI/UX-Fehler in der `Timeline`-Komponente.
+    -   Durchführung eines großen Refactorings von einer monolithischen `App.tsx` zu einer sauberen, auf Komponenten und Hooks basierenden Architektur.
+    -   **Migration zu Vite**: Umstellung des gesamten Projekts von einem CDN-basierten Setup auf eine professionelle Vite-Build-Umgebung für verbesserte Entwicklererfahrung und Leistung.
 
-## 5. Future Roadmap
--   **Advanced Visualizations**: Introduce alternative visualization modes, such as a Multi-Band Spectrogram, to provide deeper analytical insights.
--   **Structural Analysis**: Explore using an AI model to automatically segment the song into structural parts (intro, verse, chorus) and display this on a separate timeline track.
--   **Batch Processing**: Allow users to upload multiple audio files and run the base Gemini analysis on all of them in the background.
+## 5. Zukünftiger Fahrplan
+-   **Erweiterte Visualisierungen**: Einführung alternativer Visualisierungsmodi wie ein Mehrband-Spektrogramm, um tiefere analytische Einblicke zu ermöglichen.
+-   **Strukturanalyse**: Untersuchung der Verwendung eines KI-Modells zur automatischen Segmentierung des Songs in strukturelle Teile (Intro, Strophe, Refrain) und Anzeige dieser auf einer separaten Zeitleistenspur.
+-   **Batch-Verarbeitung**: Ermöglichen, dass Benutzer mehrere Audiodateien hochladen und die Basis-Gemini-Analyse für alle im Hintergrund ausführen können.

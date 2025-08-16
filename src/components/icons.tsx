@@ -1,0 +1,99 @@
+import React from 'react';
+
+export const PlayIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+        <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.648c1.295.745 1.295 2.541 0 3.286L7.279 20.99c-1.25.718-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
+    </svg>
+);
+
+export const PauseIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+        <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 00-.75.75v12a.75.75 0 00.75.75h2.25a.75.75 0 00.75-.75V6a.75.75 0 00-.75-.75H6.75zm8.25 0a.75.75 0 00-.75.75v12a.75.75 0 00.75.75h2.25a.75.75 0 00.75-.75V6a.75.75 0 00-.75-.75h-2.25z" clipRule="evenodd" />
+    </svg>
+);
+
+export const MarkerIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+        <path fillRule="evenodd" d="M9.563 3.468a.75.75 0 01.75-.038l8.25 4.5a.75.75 0 010 1.34l-8.25 4.5a.75.75 0 01-1.06-.67V4.177a.75.75 0 01.31-.609zM4.5 19.5a.75.75 0 00.75-.75V6a.75.75 0 00-1.5 0v12.75c0 .414.336.75.75.75z" clipRule="evenodd" />
+    </svg>
+);
+
+export const TrashIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+      <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-1.15.048-2.26.11-3.374.168a.75.75 0 00-.722.766v.94c0 .414.336.75.75.75h.393l.863 8.631a3.75 3.75 0 003.746 3.497h2.5c2.071 0 3.75-1.679 3.75-3.75L16.48 7.5h.393a.75.75 0 00.75-.75v-.94a.75.75 0 00-.722-.766c-1.114-.058-2.224-.12-3.374-.168v-.443A2.75 2.75 0 0011.25 1h-2.5zM10 2.5a1.25 1.25 0 011.25 1.25v.443H8.75v-.443A1.25 1.25 0 0110 2.5zM8.5 7.5a.75.75 0 00-1.5 0v6a.75.75 0 001.5 0v-6zm3 0a.75.75 0 00-1.5 0v6a.75.75 0 001.5 0v-6z" clipRule="evenodd" />
+    </svg>
+);
+
+export const ZoomInIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
+    </svg>
+);
+
+export const ZoomOutIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM13.5 10.5h-6" />
+    </svg>
+);
+
+export const VolumeIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+        <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.66 1.905H6.44l4.5 4.5c.944.945 2.56.276 2.56-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 01-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
+        <path d="M15.932 7.757a.75.75 0 011.061 0 6 6 0 010 8.486.75.75 0 01-1.06-1.061 4.5 4.5 0 000-6.364.75.75 0 010-1.06z" />
+    </svg>
+);
+
+export const SettingsIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
+      <path fillRule="evenodd" d="M11.49 3.17a.75.75 0 01.447.898l-.458 1.832a.75.75 0 00.928.928l1.832-.458a.75.75 0 01.898.447l1.294 3.11a.75.75 0 01-.272.96l-1.548.929a.75.75 0 000 1.316l1.548.929a.75.75 0 01.272.96l-1.294 3.11a.75.75 0 01-.898.447l-1.832-.458a.75.75 0 00-.928.928l.458 1.832a.75.75 0 01-.447.898l-3.11 1.294a.75.75 0 01-.96-.272l-.929-1.548a.75.75 0 00-1.316 0l-.929 1.548a.75.75 0 01-.96.272l-3.11-1.294a.75.75 0 01-.447-.898l.458-1.832a.75.75 0 00-.928-.928l-1.832.458a.75.75 0 01-.898-.447l-1.294-3.11a.75.75 0 01.272-.96l1.548-.929a.75.75 0 000-1.316l-1.548-.929a.75.75 0 01-.272-.96l1.294-3.11a.75.75 0 01.898-.447l1.832.458a.75.75 0 00.928-.928l-.458-1.832a.75.75 0 01.447-.898l3.11-1.294a.75.75 0 01.96.272l.929 1.548a.75.75 0 001.316 0l.929-1.548a.75.75 0 01.96-.272l3.11 1.294zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+    </svg>
+);
+
+export const UserIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-5.5-2.5a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM10 12a5.99 5.99 0 00-4.793 2.39A6.483 6.483 0 0010 16.5a6.483 6.483 0 004.793-2.11A5.99 5.99 0 0010 12z" clipRule="evenodd" />
+    </svg>
+);
+
+export const PlusIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+      <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+    </svg>
+);
+
+export const SparklesIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+      <path fillRule="evenodd" d="M10.868 2.884c.321.64.321 1.415 0 2.055l-1.36 2.72c-.322.64-.962 1.028-1.664 1.028s-1.342-.388-1.664-1.028L5.132 4.939c-.321-.64-.321-1.415 0-2.055l.777-1.554a.75.75 0 011.33.664l-.513 1.026c.321.64.962 1.028 1.664 1.028s1.342-.388 1.664-1.028l.513-1.026a.75.75 0 111.33-.664l-.777 1.554zM12.23 9.718c.321.64.962 1.028 1.664 1.028s1.342-.388 1.664-1.028l.513-1.026a.75.75 0 111.33-.664l-.777 1.554c-.321.64-.321 1.415 0 2.055l1.36 2.72c.322.64.962 1.028 1.664 1.028s1.342-.388 1.664-1.028l1.36-2.72c.321-.64.321-1.415 0-2.055l-.777-1.554a.75.75 0 011.33.664l.513 1.026c.321.64.962 1.028 1.664 1.028s1.342-.388 1.664-1.028l.513-1.026a.75.75 0 111.33-.664l-.777 1.554c-.321.64-.321-1.415 0-2.055l1.36-2.72c.322-.64.962-1.028 1.664-1.028s1.342-.388 1.664-1.028L19.868 2.884c.321-.64.321-1.415 0-2.055l-.777-1.554a.75.75 0 011.33.664l.513 1.026c.321.64.962 1.028 1.664 1.028s1.342-.388 1.664-1.028L22.368.829a.75.75 0 01-.664-1.33l-1.554.777c-.64.321-1.415.321-2.055 0L15.38 1.5c-.64-.322-1.028-.962-1.028-1.664s.388-1.342 1.028-1.664l2.72-1.36c.64-.321 1.415-.321 2.055 0l1.554.777a.75.75 0 11-.664 1.33l-1.026-.513c-.64-.321-1.028-.962-1.028-1.664s.388-1.342 1.028-1.664l1.026-.513a.75.75 0 11.664 1.33l-1.554.777c-.64.321-1.415.321-2.055 0l-2.72-1.36c-.64-.322-1.028-.962-1.028-1.664s.388-1.342 1.028-1.664l-2.72-1.36c-.64-.321-1.415-.321-2.055 0L3.132 4.939c-.321.64-.321 1.415 0 2.055l1.36 2.72c.322.64.962 1.028 1.664 1.028s1.342-.388 1.664-1.028l1.36-2.72c.321-.64.321-1.415 0-2.055L8.38 2.884a.75.75 0 111.33.664l.513 1.026c.321.64.962 1.028 1.664 1.028s1.342-.388 1.664-1.028z" clipRule="evenodd" />
+    </svg>
+);
+
+export const QuestionMarkIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-gray-500 hover:text-gray-300">
+        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.25 9.75A.75.75 0 019 9h.25a.75.75 0 01.75.75v3.25a.75.75 0 01-1.5 0V9.75zM9 6.5a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
+    </svg>
+);
+
+export const LyricsIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+      <path d="M3.5 2.75a.75.75 0 00-1.5 0v14.5a.75.75 0 001.5 0v-4.392A3.001 3.001 0 016.5 9.5h.095a2.25 2.25 0 012.14 1.526 2.25 2.25 0 004.53 0A2.25 2.25 0 0115.405 9.5h.095a3 3 0 013 3.008V17.25a.75.75 0 001.5 0V2.75a.75.75 0 00-1.5 0v4.392a3.001 3.001 0 01-3 3.008h-.095a2.25 2.25 0 01-2.14-1.526 2.25 2.25 0 00-4.53 0A2.25 2.25 0 014.595 10h-.095a3.001 3.001 0 01-3-3.008V2.75z" />
+    </svg>
+);
+
+export const XIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+    </svg>
+);
+
+export const SearchIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+      <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+    </svg>
+);
+
+export const SpinnerIcon: React.FC = () => (
+    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+);
