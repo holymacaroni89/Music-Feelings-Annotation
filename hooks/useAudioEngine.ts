@@ -3,117 +3,96 @@ import * as tf from '@tensorflow/tfjs';
 import { WaveformPoint } from '../types';
 
 const generateAdvancedWaveformData = async (audioBuffer: AudioBuffer, targetPoints: number = 2000): Promise<WaveformPoint[]> => {
-    return new Promise(resolve => {
-        // Use setTimeout to unblock the main thread during this heavy computation
-        setTimeout(async () => {
-            const rawData = audioBuffer.getChannelData(0);
-            const totalSamples = rawData.length;
-            const sampleRate = audioBuffer.sampleRate;
+    const rawData = audioBuffer.getChannelData(0);
+    const totalSamples = rawData.length;
+    const sampleRate = audioBuffer.sampleRate;
+    const fftSize = 2048;
+    const hopLength = 512;
 
-            const fftSize = 2048;
-            const hopLength = 512;
-            const numFrames = Math.floor((totalSamples - fftSize) / hopLength) + 1;
+    const CHUNK_DURATION_S = 10; // Process 10 seconds of audio at a time
+    const samplesPerChunk = CHUNK_DURATION_S * sampleRate;
+    const numChunks = Math.ceil(totalSamples / samplesPerChunk);
 
-            const waveformData: WaveformPoint[] = [];
+    let allCentroids: number[] = [];
+    let allFluxes: number[] = [];
+    let allAmplitudes: number[] = [];
 
-            // Manually track all tensors to ensure they are disposed
-            const tensorsToDispose: tf.Tensor[] = [];
+    for (let i = 0; i < numChunks; i++) {
+        const chunkStart = i * samplesPerChunk;
+        const chunkEnd = Math.min(chunkStart + samplesPerChunk, totalSamples);
+        const chunkData = rawData.slice(chunkStart, chunkEnd);
 
-            try {
-                const audioTensor = tf.tensor1d(rawData);
-                tensorsToDispose.push(audioTensor);
+        // Yield to the main thread to keep UI responsive during long processing
+        await new Promise(resolve => setTimeout(resolve, 10)); 
 
-                const stft = tf.signal.stft(audioTensor, fftSize, hopLength);
-                tensorsToDispose.push(stft);
-                
-                const mags = tf.abs(stft);
-                tensorsToDispose.push(mags);
-
-                // --- Calculate Spectral Centroid ---
-                const freqs = tf.linspace(0, sampleRate / 2, mags.shape[1]);
-                tensorsToDispose.push(freqs);
-
-                const weightedFreqs = mags.mul(freqs);
-                tensorsToDispose.push(weightedFreqs);
-
-                const sumWeightedFreqs = weightedFreqs.sum(1);
-                tensorsToDispose.push(sumWeightedFreqs);
-
-                const sumMags = mags.sum(1).add(1e-6); // add epsilon to avoid div by zero
-                tensorsToDispose.push(sumMags);
-
-                const centroids = sumWeightedFreqs.div(sumMags);
-                tensorsToDispose.push(centroids);
-
-                const normalizedCentroids = centroids.div(sampleRate / 2);
-                tensorsToDispose.push(normalizedCentroids);
-
-                // --- Calculate Spectral Flux ---
-                const magsPadded = tf.pad(mags, [[1, 0], [0, 0]]);
-                tensorsToDispose.push(magsPadded);
-                
-                const magsSliced = magsPadded.slice([0, 0], [mags.shape[0], mags.shape[1]]);
-                tensorsToDispose.push(magsSliced);
-
-                const magsDiff = mags.sub(magsSliced);
-                tensorsToDispose.push(magsDiff);
-
-                const reluDiff = tf.relu(magsDiff);
-                tensorsToDispose.push(reluDiff);
-
-                const squaredDiff = tf.square(reluDiff);
-                tensorsToDispose.push(squaredDiff);
-                
-                const sumSquaredDiff = tf.sum(squaredDiff, 1);
-                tensorsToDispose.push(sumSquaredDiff);
-
-                const flux = tf.sqrt(sumSquaredDiff);
-                tensorsToDispose.push(flux);
-                
-                // Get JS arrays from tensors now, before they are disposed
-                const centroidsArray: number[] = Array.from(normalizedCentroids.dataSync());
-                const fluxArray: number[] = Array.from(flux.dataSync());
-                
-                // Normalize flux
-                const maxFlux = Math.max(...fluxArray);
-                const normalizedFluxArray = maxFlux > 0 ? fluxArray.map(f => f / maxFlux) : fluxArray;
-
-                // Create waveform points, including amplitude
-                for (let i = 0; i < numFrames; i++) {
-                    const startIndex = i * hopLength;
-                    const endIndex = startIndex + hopLength;
-                    let peak = 0;
-                    for (let j = startIndex; j < endIndex; j++) {
-                        peak = Math.max(peak, Math.abs(rawData[j]));
-                    }
-                    waveformData.push({
-                        amp: peak,
-                        spectralCentroid: centroidsArray[i],
-                        spectralFlux: normalizedFluxArray[i],
-                    });
-                }
-
-                // Downsample to targetPoints if necessary
-                if (waveformData.length > targetPoints) {
-                    const finalWaveform: WaveformPoint[] = [];
-                    const step = waveformData.length / targetPoints;
-                    for (let i = 0; i < targetPoints; i++) {
-                        const index = Math.floor(i * step);
-                        finalWaveform.push(waveformData[index]);
-                    }
-                    resolve(finalWaveform);
-                } else {
-                    resolve(waveformData);
-                }
-
-            } finally {
-                // GUARANTEE that all tensors are disposed, preventing the memory leak
-                for (const tensor of tensorsToDispose) {
-                    tensor.dispose();
-                }
+        const tensorData = tf.tidy(() => {
+            if (chunkData.length === 0) {
+                return { centroidsArray: [], fluxArray: [] };
             }
-        }, 50);
-    });
+            
+            const audioTensor = tf.tensor1d(chunkData);
+            const stft = tf.signal.stft(audioTensor, fftSize, hopLength);
+            const mags = tf.abs(stft);
+
+            const freqs = tf.linspace(0, sampleRate / 2, mags.shape[1]);
+            const weightedFreqs = mags.mul(freqs);
+            const sumWeightedFreqs = weightedFreqs.sum(1);
+            const sumMags = mags.sum(1).add(1e-6);
+            const centroids = sumWeightedFreqs.div(sumMags);
+            const normalizedCentroids = centroids.div(sampleRate / 2);
+
+            const magsPadded = tf.pad(mags, [[1, 0], [0, 0]]);
+            const magsSliced = magsPadded.slice([0, 0], [mags.shape[0], mags.shape[1]]);
+            const magsDiff = mags.sub(magsSliced);
+            const flux = tf.sqrt(tf.sum(tf.square(tf.relu(magsDiff)), 1));
+
+            return {
+                centroidsArray: Array.from(normalizedCentroids.dataSync()),
+                fluxArray: Array.from(flux.dataSync())
+            };
+        });
+        
+        allCentroids.push(...tensorData.centroidsArray);
+        allFluxes.push(...tensorData.fluxArray);
+        
+        // Calculate amplitude separately on the JS thread
+        const numFramesInChunk = tensorData.centroidsArray.length;
+        for (let j = 0; j < numFramesInChunk; j++) {
+            const startIndex = j * hopLength;
+            const endIndex = startIndex + hopLength;
+            let peak = 0;
+            for (let k = startIndex; k < endIndex && k < chunkData.length; k++) {
+                peak = Math.max(peak, Math.abs(chunkData[k]));
+            }
+            allAmplitudes.push(peak);
+        }
+    }
+    
+    // Post-process the combined results from all chunks
+    const maxFlux = Math.max(...allFluxes, 0);
+    const normalizedFluxArray = maxFlux > 0 ? allFluxes.map(f => f / maxFlux) : allFluxes;
+    
+    const finalWaveform: WaveformPoint[] = [];
+    for (let i = 0; i < allCentroids.length; i++) {
+        finalWaveform.push({
+            amp: allAmplitudes[i] || 0,
+            spectralCentroid: allCentroids[i] || 0,
+            spectralFlux: normalizedFluxArray[i] || 0,
+        });
+    }
+
+    // Downsample to the target number of points for visualization
+    if (finalWaveform.length > targetPoints) {
+        const downsampled: WaveformPoint[] = [];
+        const step = finalWaveform.length / targetPoints;
+        for (let i = 0; i < targetPoints; i++) {
+            const index = Math.floor(i * step);
+            downsampled.push(finalWaveform[index]);
+        }
+        return downsampled;
+    }
+    
+    return finalWaveform;
 };
 
 
