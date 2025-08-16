@@ -71,8 +71,8 @@ const generateAdvancedWaveformData = async (audioBuffer: AudioBuffer, targetPoin
                 tensorsToDispose.push(flux);
                 
                 // Get JS arrays from tensors now, before they are disposed
-                const centroidsArray = Array.from(normalizedCentroids.dataSync());
-                const fluxArray = Array.from(flux.dataSync());
+                const centroidsArray: number[] = Array.from(normalizedCentroids.dataSync());
+                const fluxArray: number[] = Array.from(flux.dataSync());
                 
                 // Normalize flux
                 const maxFlux = Math.max(...fluxArray);
