@@ -4,93 +4,96 @@ This document outlines potential areas for future development to enhance the app
 
 ---
 
-### 1. Centralized State Management
+## Plan: UI/UX Overhaul with Vite, Tailwind CSS, and shadcn/ui
 
-#### Current Situation
-The application state is currently managed effectively through a combination of React's `useState` and custom hooks (`useAnnotationSystem`, `useAudioEngine`). State is passed down from the main `App.tsx` component via props. This is a clean and idiomatic React approach that works well for the current feature set.
+This section outlines the detailed, phased plan to migrate the application's UI to a modern, professional, and highly maintainable stack. This is the most impactful architectural improvement we can make.
 
-#### Potential Challenge
-As new features are added (e.g., multi-track editing, more complex user settings, real-time collaboration), the state management could become a bottleneck. "Prop-drilling"—passing props through multiple layers of components that don't need them—can become cumbersome and make refactoring difficult. It can also lead to unnecessary re-renders of intermediate components.
+### 1. Strategic Rationale
 
-#### Proposed Solution: Adopt a Lightweight State Manager (Zustand)
-To preempt these issues, introducing a centralized state management library like **Zustand** would be a strategic move.
+-   **Professional Aesthetics**: Move from a functional UI to a polished, world-class design system provided by `shadcn/ui`.
+-   **Developer Experience (DX)**: Introduce `Vite` for a lightning-fast development server with instant updates (HMR).
+-   **Maintainability & Scalability**: `Tailwind CSS` utility classes and component-based styling make the UI consistent and easy to modify.
+-   **Performance**: `Vite` produces highly optimized builds, and `Tailwind CSS` purges unused styles, resulting in minimal CSS payloads.
+-   **Accessibility**: `shadcn/ui` components are built with accessibility (WAI-ARIA) as a first-class citizen.
 
-**Why Zustand?**
-*   **Minimal Boilerplate**: It's incredibly simple to set up and use, avoiding the complexity of libraries like Redux.
-*   **Hook-Based API**: It feels like a natural extension of React's built-in hooks, making it easy to learn and integrate.
-*   **Decouples State from UI**: Components can subscribe directly to the specific pieces of state they need, eliminating prop-drilling entirely.
-*   **Performance**: It allows for fine-grained state selection, preventing components from re-rendering if unrelated parts of the state change.
+### 2. The New Stack
 
-**Implementation Steps:**
-1.  **Create a Store**: Define a central store (e.g., in `src/store.ts`) that holds global state like `markers`, `trackInfo`, `activeProfileId`, `profiles`, etc.
-2.  **Define Actions**: Actions to modify the state (e.g., `addMarker`, `setActiveProfile`, `updateTrackInfo`) would be defined as functions within the store.
-3.  **Refactor Components**: Components like `Header`, `LabelPanel`, and `MarkerList` would be refactored to pull data directly from the store using the `useStore` hook (e.g., `const markers = useStore(state => state.markers);`). This makes them more self-contained and reusable.
+-   **`Vite`**: The build tool. It will compile our TypeScript/React code, process our CSS, and serve a fast development environment.
+-   **`Tailwind CSS`**: The styling engine. A utility-first CSS framework that allows us to build any design directly in our markup.
+-   **`shadcn/ui`**: The component library. It's not a typical library; we use its CLI to copy well-architected, fully-styled React components (built with Tailwind) directly into our project, giving us total control over their code.
 
----
+### 3. Phased Migration Plan
 
-### 2. Enhanced UI for Error Handling & User Feedback
+This process is designed to be executed in deliberate stages to minimize disruption and ensure quality.
 
-#### Current Situation
-Error conditions and user feedback are often handled using browser `alert()` dialogs (e.g., for API key errors, audio decoding failures) or messages in the console. While functional, this approach has drawbacks.
+#### Phase 0: Project Foundation Setup
 
-#### Potential Challenge
-*   **Disruptive UX**: `alert()` is a blocking modal that halts all user interaction and feels dated.
-*   **Invisibility**: Errors logged to the console are invisible to the average user.
-*   **Inconsistency**: There isn't a single, consistent pattern for notifying the user of success, warnings, or errors.
+This is a one-time setup that establishes the new development environment. The application will not look different after this phase, but the underlying build process will be completely new.
 
-#### Proposed Solution: Implement a Toast Notification System and Error Boundaries
+1.  **Introduce Vite**:
+    -   Create a `package.json` to manage dependencies.
+    -   Add `vite`, `react`, `react-dom`, `typescript` and their corresponding types as dependencies.
+    -   Create `vite.config.ts` to configure the React plugin.
+2.  **Integrate Tailwind CSS**:
+    -   Add `tailwindcss`, `postcss`, and `autoprefixer` as development dependencies.
+    -   Create `tailwind.config.js` and `postcss.config.js`.
+    -   Create a global `index.css` file and include the Tailwind `@tailwind` directives.
+3.  **Restructure Project Files**:
+    -   Move all existing `.tsx`, `.ts`, and `.html` files into a `src/` directory.
+    -   Update `index.html` to be a standard Vite entry point, linking to `src/index.tsx` via a `<script type="module">` tag.
+    -   Remove the Tailwind CDN script and the `importmap` from `index.html`. All dependencies will now be managed by Vite via `package.json`.
 
-**A. Toast Notifications**
-A "toast" is a small, non-blocking notification that appears briefly on the screen. This is ideal for providing contextual feedback without interrupting the user's workflow.
+#### Phase 1: Global Styles & Core Component Implementation
 
-**Implementation Steps:**
-1.  **Integrate a Library**: Add a lightweight, modern library like `react-hot-toast` or `Sonner`.
-2.  **Create a `ToastProvider`**: Wrap the main `App` component with a global provider.
-3.  **Replace `alert()`**: Systematically replace all instances of `alert()` with specific toast notifications:
-    *   `toast.error("Genius API key is invalid.")` for API failures.
-    *   `toast.success("Profile refined successfully!")` for successful operations.
-    *   `toast.info("Import complete. 3 warnings were found.")` for informational messages.
+With the foundation in place, we will now define the visual identity of the application.
 
-**B. React Error Boundaries**
-An Error Boundary is a React component that catches JavaScript errors anywhere in its child component tree, logs those errors, and displays a fallback UI instead of letting the entire app crash.
+1.  **Configure `tailwind.config.js`**:
+    -   Define a new, modern color palette (e.g., using Tailwind's "slate" or "zinc" colors for backgrounds and text, and a vibrant color like "blue" or "violet" for accents).
+    -   Configure the font family to use a modern sans-serif font like "Inter".
+2.  **Apply Global Styles**:
+    -   Set the base background color, text color, and font on the `<body>` tag in `index.css`.
+3.  **Initialize `shadcn/ui`**:
+    -   Run the `shadcn/ui` init command to set up `components.json` and create the `lib/utils.ts` and `components/ui` directory.
+4.  **Add Core Components**:
+    -   Use the `shadcn/ui` CLI to add the first set of essential, un-styled UI components.
+    -   `npx shadcn-ui@latest add button`
+    -   `npx shadcn-ui@latest add input`
+    -   `npx shadcn-ui@latest add select`
+    -   `npx shadcn-ui@latest add slider`
+    -   `npx shadcn-ui@latest add dialog` (for our modals)
+    -   `npx shadcn-ui@latest add tooltip`
 
-**Implementation Steps:**
-1.  **Create an `ErrorBoundary` Component**: Build a reusable component using the `react-error-boundary` library or a custom class component.
-2.  **Wrap Critical UI Sections**: Wrap key components like `<Workspace />` and `<LabelPanel />` with the `<ErrorBoundary>`. If a component fails to render due to an unexpected error, only that section of the UI will show a "Something went wrong" message, while the rest of the application remains functional.
+#### Phase 2: Layout & Component Substitution
 
----
+In this phase, we will gut the old styling and replace it with the new system, component by component.
 
-### 3. Comprehensive Automated Testing Strategy
+1.  **Rebuild Main Layout**:
+    -   Refactor `App.tsx` and its main children (`Header.tsx`, `Workspace.tsx`, `Footer.tsx`, `LabelPanel.tsx`) to use Tailwind's flexbox and grid utilities for layout instead of custom CSS.
+2.  **Component Swap**:
+    -   Systematically go through each component.
+    -   Replace every `<button>` element with the new `<Button>` component from `components/ui/button`.
+    -   Replace `<input type="range">` with the new `<Slider>` component.
+    -   Replace the custom `Modal.tsx` with `shadcn/ui`'s `<Dialog>`.
+    -   Update all other form elements (`select`, `textarea`, `checkbox`) to use their `shadcn/ui` equivalents or style them with Tailwind classes for consistency.
+3.  **Icon Standardization**:
+    -   Replace the custom-built SVG icons with a standard, high-quality icon library like `lucide-react`. This ensures visual consistency.
 
-#### Current Situation
-The project currently relies on manual testing to ensure quality. This is effective for smaller projects but becomes unreliable and time-consuming as the codebase grows.
+#### Phase 3: Complex & Custom Component Refactoring
 
-#### Potential Challenge
-Refactoring core logic (especially in `services` or complex hooks like `useAnnotationSystem`) is risky without an automated test suite to catch regressions immediately. Bugs can easily slip into production.
+This phase tackles the most unique and challenging parts of the UI.
 
-#### Proposed Solution: Introduce a Multi-Layered Testing Strategy with Vitest
+1.  **Timeline**: The core canvas rendering logic in `Timeline.tsx` will remain unchanged. However, the surrounding `div` containers and any overlay elements (like the tooltips) will be rebuilt and styled using Tailwind utilities to integrate seamlessly with the new design.
+2.  **MarkerList**: Refactor `MarkerList.tsx`. The list items will be rebuilt using flexbox, and their states (selected, hovered) will be managed with Tailwind's state variants (`hover:bg-slate-800`, `data-[state=selected]:bg-blue-900`).
+3.  **LabelPanel**: Overhaul `LabelPanel.tsx` to be a clean form composed entirely of the new `shadcn/ui` components (`Input`, `Slider`, `Select`, etc.), ensuring it has a professional and consistent look and feel.
 
-**Why Vitest?**
-*   **Modern & Fast**: It's a next-generation test runner that's significantly faster than older tools like Jest.
-*   **Jest-Compatible API**: The syntax is familiar, making it easy to write tests.
-*   **First-Class TypeScript Support**: No complex configuration is needed to get it working with the project's codebase.
+#### Phase 4: Final Polish & Cleanup
 
-**Implementation Steps:**
+The final step is to remove all remnants of the old system and ensure the new one is perfect.
 
-**A. Unit Tests**
-*   **Goal**: Test individual, isolated functions (especially pure functions).
-*   **Targets**:
-    *   `services/csvService.ts`: Test `exportToCsv` and `importFromCsv` with various edge cases (e.g., strings containing semicolons/quotes, malformed rows, incorrect headers).
-    *   `services/trainingService.ts`: Mock `localStorage` to verify that training data is saved and loaded correctly for different profiles.
-    *   Helper functions like `cleanFileName` in `App.tsx`.
-
-**B. Integration / Hook Tests**
-*   **Goal**: Test how multiple units work together, focusing on custom hooks.
-*   **Tools**: Use `@testing-library/react`'s `renderHook` and `act` utilities.
-*   **Targets**:
-    *   `hooks/useAnnotationSystem`: Write tests that simulate a user's workflow. For example:
-        1.  Render the hook.
-        2.  Call `handleMarkerCreationToggle` at time `t1`.
-        3.  Assert that `pendingMarkerStart` has the correct value.
-        4.  Call it again at `t2` and assert that a new marker has been added to the `markers` array.
-    *   `hooks/useAudioEngine`: Mock the Web Audio API to test state transitions (e.g., asserting that `isPlaying` becomes `true` after `togglePlayPause` is called).
+1.  **Code Cleanup**:
+    -   Delete the old `components/icons.tsx` file in favor of `lucide-react`.
+    -   Search the entire project for any remaining inline `style` attributes or old class names and remove them.
+2.  **Review and Refine**:
+    -   Conduct a full visual review of the application to catch any inconsistencies.
+    -   Test responsiveness on different screen sizes.
+    -   Perform an accessibility check using browser tools to ensure all `shadcn/ui` components are correctly implemented.
