@@ -1,9 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { WaveformPoint, MerSuggestion, GEMS, Trigger } from '../types';
 
-// This assumes process.env.API_KEY is available.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 // This function summarizes the detailed waveform data into a more compact text format
 // that is suitable for the LLM's context window.
 const summarizeWaveform = (waveform: WaveformPoint[], duration: number, points: number = 100): string => {
@@ -90,6 +87,13 @@ const suggestionSchema = {
 };
 
 export const generateMerSuggestions = async (waveform: WaveformPoint[], duration: number, songContext?: string): Promise<MerSuggestion[]> => {
+    const apiKey = (import.meta as any).env?.VITE_GOOGLE_API_KEY as string | undefined;
+    if (!apiKey) {
+        throw new Error(
+            "Google API Key fehlt: Bitte setze VITE_GOOGLE_API_KEY (z.B. in einer .env) oder hinterlege ihn über deine lokale Umgebung, damit die KI-Analyse funktioniert."
+        );
+    }
+    const ai = new GoogleGenAI({ apiKey });
     const summarizedData = summarizeWaveform(waveform, duration);
     
     const systemInstructionWithContext = `You are an expert in Music Information Retrieval (MIR) and Music Emotion Recognition (MER). Your primary task is to create a tight synthesis between summarized audio waveform data and rich lyrical/annotative context to identify emotionally significant moments in a song.

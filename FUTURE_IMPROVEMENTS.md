@@ -97,3 +97,21 @@ Der letzte Schritt besteht darin, alle Überreste des alten Systems zu entfernen
     -   Durchführung einer vollständigen visuellen Überprüfung der Anwendung, um Inkonsistenzen zu erkennen.
     -   Testen der Reaktionsfähigkeit auf verschiedenen Bildschirmgrößen.
     -   Durchführung einer Barrierefreiheitsprüfung mit Browser-Tools, um sicherzustellen, dass alle `shadcn/ui`-Komponenten korrekt implementiert sind.
+
+---
+
+## Fortschritts-Tracker (aktueller Stand)
+
+- Erledigt/Teilweise erledigt:
+  - Tailwind über Vite gebundled; CDN/Import-Maps entfernt; Typography/Animate-Plugins aktiv.
+  - `shadcn/ui` Basis konfiguriert (`components.json`, Aliases, `src/lib/utils.ts`).
+  - Dialog (Modal) auf `shadcn` umgestellt.
+  - Buttons in Header/Footer/MarkerList auf `shadcn` umgestellt (inkl. Icon-Buttons).
+  - Slider (Header-Volume; LabelPanel: Valence, Arousal, Intensity, Confidence) auf `shadcn`.
+  - Icons vollständig auf `lucide-react` konsolidiert.
+
+- Ausstehend/Nächste Schritte:
+  - `select` und `checkbox` via `shadcn` ergänzen und im LabelPanel umstellen (GEMS/Trigger).
+  - Button-Variants/Theme verfeinern (Prominenz der Primäraktionen erhöhen).
+  - Responsiveness/A11y-Review und visuelle Feinarbeit.
+  - Optional: Eigener CORS-Proxy und Gemini-Backend-Proxy evaluieren.

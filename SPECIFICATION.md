@@ -27,7 +27,7 @@ Die Benutzeroberfläche ist in logische, wiederverwendbare Komponenten unterteil
 -   **`components/Timeline.tsx`**: Die zentrale interaktive Komponente. Eine auf Canvas basierende Ansicht, die für das Zeichnen der Wellenform, der Marker, des Wiedergabekopfes und der KI-Vorschläge sowie für die Handhabung aller Mausinteraktionen (Scrubbing, Ziehen, Größenänderung) verantwortlich ist.
 -   **`components/LabelPanel.tsx`**: Das Formular auf der rechten Seite zur Bearbeitung der Details eines ausgewählten Markers.
 -   **`components/MarkerList.tsx`**: Die Liste der erstellten Marker unterhalb der Zeitleiste.
--   **`components/Modal.tsx`**: Ein wiederverwendbarer, nicht blockierender modaler Dialog, der für Benutzereingaben wie die Profilerstellung und die Verwaltung von API-Schlüsseln verwendet wird.
+-   **`components/Modal.tsx`**: Wiederverwendbarer modaler Dialog, implementiert via `shadcn/ui` (`Dialog`, `DialogContent`) für konsistente Barrierefreiheit und Verhalten.
 
 ### 2.3. Logikabstraktion (Custom Hooks)
 Um `App.tsx` schlank zu halten und die Trennung der Belange zu wahren, ist die gesamte Geschäftslogik in benutzerdefinierten React Hooks gekapselt.
@@ -41,6 +41,11 @@ Um `App.tsx` schlank zu halten und die Trennung der Belange zu wahren, ist die g
     -   **`AUTOSAVE_KEY`**: Speichert den Haupt-`AppState` (aktueller Track, Marker, Profile, API-Schlüssel und Songkontextdaten).
     -   **`TRAINING_DATA_PREFIX`**: Speichert `TrainingSample[]`-Arrays, eines für jedes Benutzerprofil.
     -   **`MODEL_STORAGE_KEY_PREFIX`**: Speichert das trainierte TensorFlow.js-Modell, eines für jedes Benutzerprofil.
+
+### 2.5. Styling- und Komponenten-System
+-   TailwindCSS als Styling-Basis, gebundled über Vite (kein CDN). Plugins: `@tailwindcss/typography` (für `prose`-Stile), `tailwindcss-animate` (Transitions).
+-   `shadcn/ui` als Komponenten-Quelle (per CLI in `src/components/ui/*`). Hilfsfunktion `cn()` in `src/lib/utils.ts` (clsx + tailwind-merge).
+-   `lucide-react` als einheitliche Icon-Bibliothek.
 
 ## 3. Feature-Aufschlüsselung
 
@@ -58,7 +63,7 @@ Um `App.tsx` schlank zu halten und die Trennung der Belange zu wahren, ist die g
 Dies ist die Kerninnovation der Anwendung. Sie kombiniert eine leistungsstarke allgemeine KI mit einer kleinen, anpassungsfähigen persönlichen KI.
 
 #### Ebene 1: Basis-MER-Modell (Gemini)
--   **Implementierung**: `services/geminiService.ts`
+-   **Implementierung**: `services/geminiService.ts` (liest `VITE_GOOGLE_API_KEY` aus `import.meta.env`).
 -   **Prozess**:
     1.  Die Audio-Wellenform wird in ein kompaktes Textformat zusammengefasst.
     2.  Diese Zusammenfassung wird zusammen mit dem reichhaltigen `songContext`-String, der von Genius abgerufen wurde (und nun zeilenweise Anmerkungen enthält), an das `gemini-2.5-flash`-Modell gesendet.

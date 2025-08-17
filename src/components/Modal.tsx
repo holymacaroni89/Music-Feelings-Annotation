@@ -1,4 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 interface ModalProps {
     onClose: () => void;
@@ -7,36 +9,17 @@ interface ModalProps {
 }
 
 const Modal: React.FC<ModalProps> = ({ onClose, children, size = 'md' }) => {
-    // This effect handles the 'Escape' key to close the modal
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [onClose]);
-
     const sizeClasses = {
-        md: 'max-w-lg',
-        lg: 'max-w-4xl'
-    };
+        md: 'sm:max-w-lg',
+        lg: 'sm:max-w-4xl'
+    } as const;
 
     return (
-        <div 
-            className="fixed inset-0 bg-gray-900 bg-opacity-75 flex justify-center items-center z-50 p-4" 
-            onClick={onClose}
-        >
-            <div 
-                className={`bg-gray-800 rounded-lg shadow-xl w-full border border-gray-700 flex flex-col ${sizeClasses[size]}`} 
-                onClick={e => e.stopPropagation()}
-            >
+        <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+            <DialogContent className={cn('border-gray-700 bg-gray-800 text-gray-200', sizeClasses[size])}>
                 {children}
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 };
 

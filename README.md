@@ -28,6 +28,14 @@ Dieses Projekt verwendet Vite für eine schnelle Entwicklungsumgebung.
     ```
 3.  Öffnen Sie die in Ihrem Terminal angezeigte lokale URL (normalerweise `http://localhost:5173`) in Ihrem Browser.
 
+Hinweise für Windows 11 + WSL
+- Starten mit offenem Host (falls `localhost` im Windows-Browser nicht erreichbar ist):
+  ```bash
+  npm run dev -- --host 0.0.0.0
+  ```
+  Nutzen Sie dann die „Network“-URL aus der Vite-Ausgabe.
+- HMR lädt Änderungen automatisch. Dev-Server neu starten bei Änderungen an `.env`, `tailwind.config.js`, `postcss.config.js`, `vite.config.ts` oder nach `npm install`.
+
 ### Einmalige Einrichtung: Genius API-Schlüssel
 Um die automatische Suche nach Songinformationen zu aktivieren, benötigen Sie einen kostenlosen API-Schlüssel von Genius.
 1.  Gehen Sie zu [genius.com/api-clients](https://genius.com/api-clients) und melden Sie sich an.
@@ -50,3 +58,33 @@ Um die automatische Suche nach Songinformationen zu aktivieren, benötigen Sie e
     -   Erstellen Sie Ihre eigenen Marker manuell, indem Sie 'M' einmal drücken, um einen Startpunkt festzulegen, und erneut, um den Endpunkt festzulegen.
 5.  **Profil verfeinern**: Während Sie Marker erstellen und bearbeiten, sammeln Sie "Trainingspunkte". Sobald Sie genug haben, klicken Sie auf die Schaltfläche **"Refine Profile"**, um Ihr persönliches KI-Modell zu trainieren. Zukünftige Analysen unter diesem Profil werden nun besser auf Ihre Eingaben abgestimmt sein.
 6.  **Daten exportieren**: Wenn Sie fertig sind, klicken Sie auf die Schaltfläche "Export CSV", um Ihre Arbeit zu speichern.
+
+### Einmalige Einrichtung: Google Gemini API-Schlüssel
+Für die KI-Emotionsanalyse wird ein Google API Key benötigt.
+1. Erstellen Sie einen API Key in der Google AI Studio/Console.
+2. Legen Sie im Projektverzeichnis eine Datei `.env` an und setzen Sie:
+   
+   VITE_GOOGLE_API_KEY=dein_api_key
+
+3. Starten Sie den Dev-Server neu (`npm run dev`). Ohne Schlüssel ist die Schaltfläche „Analyze Emotions“ deaktiviert.
+
+Sicherheits-Hinweis
+- Verteilen Sie den API-Key nicht öffentlich. Für produktive Nutzung empfiehlt sich ein Backend-Proxy, damit der Key nicht im Client liegt.
+
+### Styling & UI-Komponenten
+- Tailwind wird über Vite gebundled (kein CDN). Plugins: `@tailwindcss/typography`, `tailwindcss-animate`.
+- UI-Basis migriert auf `shadcn/ui` (Button, Dialog, Slider). Icons: `lucide-react`.
+- shadcn-CLI nutzen, um Komponenten hinzuzufügen:
+  ```bash
+  npx shadcn@latest add dialog
+  npx shadcn@latest add button
+  npx shadcn@latest add input
+  npx shadcn@latest add slider
+  npx shadcn@latest add tooltip
+  ```
+  Die Dateien werden nach `src/components/ui/` geschrieben; Hilfsfunktion `cn` liegt unter `src/lib/utils.ts`.
+
+### Fehlerbehebung (Troubleshooting)
+- „Cannot find module …“: Nach Paketänderungen `npm install` ausführen und Dev-Server neu starten.
+- `.env` greift nicht: Dev-Server neu starten; `cat .env` prüfen (eine Zeile ohne Extrazeichen).
+- WSL: Falls `localhost` nicht erreichbar, „Network“-URL verwenden oder Firewall prüfen.

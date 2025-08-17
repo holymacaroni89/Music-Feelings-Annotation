@@ -1,4 +1,6 @@
 import React from 'react';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, UserIcon, PlusIcon, SparklesIcon, LyricsIcon, SettingsIcon } from './icons';
 import { Profile, TrackInfo } from '../types';
 
@@ -17,6 +19,8 @@ interface HeaderProps {
     trackInfo: TrackInfo | null;
     onEditLyricsClick: () => void;
     onAnalyzeEmotions: () => void;
+    canAnalyzeEmotions?: boolean;
+    analyzeDisabledReason?: string;
     isProcessing: boolean;
     isPlaying: boolean;
     onTogglePlayPause: () => void;
@@ -43,6 +47,8 @@ const Header: React.FC<HeaderProps> = ({
     trackInfo,
     onEditLyricsClick,
     onAnalyzeEmotions,
+    canAnalyzeEmotions = true,
+    analyzeDisabledReason,
     isProcessing,
     isPlaying,
     onTogglePlayPause,
@@ -64,7 +70,9 @@ const Header: React.FC<HeaderProps> = ({
     return (
         <header className="flex items-center justify-between p-2 bg-gray-800 border-b border-gray-700 flex-shrink-0">
             <div className="flex items-center gap-4">
-                <button onClick={() => fileInputRef.current?.click()} className="bg-blue-500 hover:bg-blue-400 text-white font-bold py-2 px-4 rounded transition-colors">Load Audio</button>
+                <Button onClick={() => fileInputRef.current?.click()} className="bg-blue-500 hover:bg-blue-400 text-white font-bold">
+                    Load Audio
+                </Button>
                 <input type="file" ref={fileInputRef} onChange={onFileChange} accept=".mp3,.wav,.flac" className="hidden" />
                 <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
                     <UserIcon />
@@ -75,40 +83,40 @@ const Header: React.FC<HeaderProps> = ({
                     >
                         {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
-                    <button onClick={onAddNewProfileClick} className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
+                    <Button onClick={onAddNewProfileClick} variant="ghost" size="icon" className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
                         <PlusIcon />
-                    </button>
+                    </Button>
                      <div className="text-xs text-gray-400 ml-2 tabular-nums flex items-center gap-3" title="Number of annotations collected for training the personal AI model.">
                         <span>{trainingDataCount} training points</span>
                         {trainingDataCount >= minTrainingSamples && (
-                            <button
+                            <Button
                                 onClick={onRefineProfile}
                                 disabled={trainingStatus === 'training'}
                                 className="px-2 py-1 text-xs rounded-md flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-wait"
                             >
                                 <SparklesIcon/>
                                 {refineButtonText}
-                            </button>
+                            </Button>
                         )}
                     </div>
                 </div>
                  <div className="flex items-center gap-2">
                     {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
                     {trackInfo && (
-                        <button onClick={onEditLyricsClick} className="p-1.5 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white" title="Find Lyrics & Info">
+                        <Button onClick={onEditLyricsClick} variant="ghost" size="icon" className="p-1.5 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white" title="Find Lyrics & Info">
                             <LyricsIcon />
-                        </button>
+                        </Button>
                     )}
                     {trackInfo && (
-                        <button
+                        <Button
                             onClick={onAnalyzeEmotions}
-                            disabled={isProcessing}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-wait"
-                            title="Analyze emotions with AI"
+                            disabled={isProcessing || !canAnalyzeEmotions}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm"
+                            title={canAnalyzeEmotions ? "Analyze emotions with AI" : (analyzeDisabledReason || "AI analysis unavailable")}
                         >
                             <SparklesIcon />
                             <span>Analyze Emotions</span>
-                        </button>
+                        </Button>
                     )}
                 </div>
             </div>
@@ -128,28 +136,47 @@ const Header: React.FC<HeaderProps> = ({
                     <div className="text-lg font-mono text-gray-200 w-32 text-center">
                        {formatTime(currentTime)} / {formatTime(trackInfo.duration_s)}
                     </div>
-                    <div className="flex items-center gap-2 text-gray-300">
+                    <div className="flex items-center gap-2 text-gray-300 w-48">
                         <VolumeIcon />
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value={volume}
-                            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                            className="w-24 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                            title={`Volume: ${Math.round(volume*100)}%`}
+                        <Slider
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={[volume]}
+                          onValueChange={(v) => onVolumeChange(v[0] ?? 0)}
                         />
                     </div>
                 </div>
             )}
             <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-400">Zoom:</span>
-                 <button onClick={() => onZoom('in')} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Zoom In"><ZoomInIcon /></button>
-                 <button onClick={() => onZoom('out')} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Zoom Out"><ZoomOutIcon /></button>
-                 <button onClick={onOpenApiSettings} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors ml-2" title="API Key Settings">
-                    <SettingsIcon />
-                 </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full text-white"
+                  onClick={() => onZoom('in')}
+                  title="Zoom In"
+                >
+                  <ZoomInIcon />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full text-white"
+                  onClick={() => onZoom('out')}
+                  title="Zoom Out"
+                >
+                  <ZoomOutIcon />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full text-white ml-2"
+                  onClick={onOpenApiSettings}
+                  title="API Key Settings"
+                >
+                  <SettingsIcon />
+                </Button>
             </div>
         </header>
     );

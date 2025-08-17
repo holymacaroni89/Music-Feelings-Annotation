@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button } from '@/components/ui/button';
 import { Marker } from '../types';
 import { GEMS_COLORS } from '../constants';
 import { TrashIcon } from './icons';
@@ -52,16 +53,18 @@ const MarkerList: React.FC<MarkerListProps> = ({ markers, selectedMarkerId, onSe
                                      <p className="text-gray-400 text-xs truncate">{marker.imagery || 'No imagery text.'}</p>
                                  </div>
                             </div>
-                            <button
+                            <Button
                                 onClick={(e) => {
                                     e.stopPropagation(); // Prevent selection when deleting
                                     onDeleteMarker(marker.id);
                                 }}
+                                variant="ghost"
+                                size="icon"
                                 className="p-1 rounded-full text-gray-400 hover:bg-red-700 hover:text-white transition-colors flex-shrink-0"
                                 title="Delete Marker"
                             >
                                 <TrashIcon />
-                            </button>
+                            </Button>
                         </div>
                     );
                 })}

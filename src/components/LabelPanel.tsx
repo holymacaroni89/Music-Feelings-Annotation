@@ -1,4 +1,6 @@
 import React from 'react';
+import { Button } from '@/components/ui/button';
+import { Slider as UISlider } from '@/components/ui/slider';
 import { Marker, GEMS, Trigger } from '../types';
 import { GEMS_OPTIONS, TRIGGER_OPTIONS } from '../constants';
 import { QuestionMarkIcon } from './icons';
@@ -18,18 +20,18 @@ const InfoTooltip = ({ text }: { text: string }) => (
     </div>
 );
 
-interface SliderProps {
+interface LabeledSliderProps {
     label: string;
     tooltipText: string;
     value: number;
     min: number;
     max: number;
     step: number;
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onChange: (next: number) => void;
     displayValue: string;
 }
 
-const Slider: React.FC<SliderProps> = ({ label, tooltipText, value, min, max, step, onChange, displayValue }) => (
+const LabeledSlider: React.FC<LabeledSliderProps> = ({ label, tooltipText, value, min, max, step, onChange, displayValue }) => (
     <div>
         <label className="flex justify-between items-center text-sm font-medium text-gray-300">
             <span className="flex items-center gap-1.5">
@@ -38,14 +40,12 @@ const Slider: React.FC<SliderProps> = ({ label, tooltipText, value, min, max, st
             </span>
             <span>{displayValue}</span>
         </label>
-        <input
-            type="range"
-            min={min}
-            max={max}
-            step={step}
-            value={value}
-            onChange={onChange}
-            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+        <UISlider
+          min={min}
+          max={max}
+          step={step}
+          value={[value]}
+          onValueChange={(v) => onChange(v[0] ?? value)}
         />
     </div>
 );
@@ -81,45 +81,45 @@ const LabelPanel: React.FC<LabelPanelProps> = ({ selectedMarker, onUpdateMarker,
         <div className="w-96 bg-gray-800 p-4 overflow-y-auto flex-shrink-0 border-l border-gray-700">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-100">Marker @ {selectedMarker.t_start_s.toFixed(2)}s</h2>
-                <button
+                <Button
                     onClick={() => onDeleteMarker(selectedMarker.id)}
-                    className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 rounded-md text-white transition-colors"
+                    className="bg-red-600 hover:bg-red-700 text-white"
                 >
                     Delete
-                </button>
+                </Button>
             </div>
 
             <div className="space-y-5">
-                <Slider
+                <LabeledSlider
                     label="Valence"
                     tooltipText="How positive (+1) or negative (-1) the emotion is."
                     value={selectedMarker.valence}
                     min={-1} max={1} step={0.01}
-                    onChange={e => handleInputChange('valence', parseFloat(e.target.value))}
+                    onChange={next => handleInputChange('valence', next)}
                     displayValue={selectedMarker.valence.toFixed(2)}
                 />
-                <Slider
+                <LabeledSlider
                     label="Arousal"
                     tooltipText="The energy level of the emotion, from calm (0) to activated (1)."
                     value={selectedMarker.arousal}
                     min={0} max={1} step={0.01}
-                    onChange={e => handleInputChange('arousal', parseFloat(e.target.value))}
+                    onChange={next => handleInputChange('arousal', next)}
                     displayValue={selectedMarker.arousal.toFixed(2)}
                 />
-                <Slider
+                <LabeledSlider
                     label="Intensity"
                     tooltipText="The perceived emotional impact or 'punchiness' of the moment (0-100). A quiet, tense moment can have low arousal but high intensity."
                     value={selectedMarker.intensity}
                     min={0} max={100} step={1}
-                    onChange={e => handleInputChange('intensity', parseInt(e.target.value, 10))}
+                    onChange={next => handleInputChange('intensity', Math.round(next))}
                     displayValue={selectedMarker.intensity.toString()}
                 />
-                <Slider
+                <LabeledSlider
                     label="Confidence"
                     tooltipText="How certain you are about this annotation (0-1)."
                     value={selectedMarker.confidence}
                     min={0} max={1} step={0.01}
-                    onChange={e => handleInputChange('confidence', parseFloat(e.target.value))}
+                    onChange={next => handleInputChange('confidence', next)}
                     displayValue={selectedMarker.confidence.toFixed(2)}
                 />
 

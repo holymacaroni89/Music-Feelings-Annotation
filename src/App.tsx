@@ -201,6 +201,7 @@ const GeniusSearchModal: React.FC<GeniusSearchModalProps> = ({
 
 // --- Main App Component ---
 const App: React.FC = () => {
+    const hasGeminiKey: boolean = !!((import.meta as any).env?.VITE_GOOGLE_API_KEY);
     const [trackInfo, setTrackInfo] = useState<TrackInfo | null>(null);
     const [zoom, setZoom] = useState(20);
     const [warnings, setWarnings] = useState<string[]>([]);
@@ -396,6 +397,8 @@ const App: React.FC = () => {
                 trackInfo={trackInfo}
                 onEditLyricsClick={() => openModal('SEARCH_GENIUS')}
                 onAnalyzeEmotions={handleAnalyzeEmotions}
+                canAnalyzeEmotions={hasGeminiKey}
+                analyzeDisabledReason={hasGeminiKey ? undefined : 'Set VITE_GOOGLE_API_KEY and reload to enable AI analysis.'}
                 isProcessing={isProcessing}
                 isPlaying={isPlaying}
                 onTogglePlayPause={togglePlayPause}
