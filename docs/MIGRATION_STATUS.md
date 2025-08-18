@@ -18,11 +18,18 @@ Aktualisiert: automatisch, Stand der letzten Änderungen in diesem Repo.
 - Select (GEMS) → `shadcn/ui` Select
 - Checkbox-Gruppe (Trigger) → `shadcn/ui` Checkbox
 - Theme/Variants: Prominenz wichtiger Aktionen (z. B. Analyze Emotions) erhöhen
-- A11y/Responsiveness: Review und Feinschliff
+- **Responsive Design vervollständigen** (laufend - mitten drin)
+  - Mobile und Tablet-Layouts optimieren
+  - Touch-Interaktionen für kleinere Geräte verbessern
+  - Breakpoint-spezifische Anpassungen finalisieren
+- A11y-Review nach Abschluss des responsiven Designs
 
 ## Nächste Schritte (Kurz)
-1. `npx shadcn@latest add select checkbox`
-2. LabelPanel: GEMS-Select und Trigger-Checkboxen migrieren
-3. Button-Variants vereinheitlichen (primary/secondary/ghost etc.)
-4. Visueller Review (Abstände, Kontraste, Fokus-Stile)
+1. **Responsive Design vervollständigen** (hohe Priorität)
+   - Mobile/Tablet-Layouts optimieren
+   - Touch-Interaktionen verbessern
+2. `npx shadcn@latest add select checkbox`
+3. LabelPanel: GEMS-Select und Trigger-Checkboxen migrieren
+4. Button-Variants vereinheitlichen (primary/secondary/ghost etc.)
+5. Visueller Review (Abstände, Kontraste, Fokus-Stile)
 

@@ -93,9 +93,15 @@ Der letzte Schritt besteht darin, alle Überreste des alten Systems zu entfernen
 1.  **Code-Bereinigung**:
     -   Löschen der alten `components/icons.tsx`-Datei zugunsten von `lucide-react`.
     -   Durchsuchen des gesamten Projekts nach verbleibenden inline-`style`-Attributen oder alten Klassennamen und deren Entfernung.
-2.  **Überprüfung und Verfeinerung**:
+2.  **Responsive Design vervollständigen**:
+    -   **Aktueller Status**: Responsive Design-Überarbeitung ist begonnen, aber noch nicht abgeschlossen
+    -   **Besonders wichtig**: Auf kleineren Geräten funktioniert das responsive Design noch nicht optimal
+    -   Mobile und Tablet-Layouts optimieren
+    -   Touch-Interaktionen für kleinere Bildschirme verbessern
+    -   Breakpoint-spezifische Anpassungen finalisieren
+3.  **Überprüfung und Verfeinerung**:
     -   Durchführung einer vollständigen visuellen Überprüfung der Anwendung, um Inkonsistenzen zu erkennen.
-    -   Testen der Reaktionsfähigkeit auf verschiedenen Bildschirmgrößen.
+    -   **Responsive Testing**: Umfassendes Testen auf verschiedenen Bildschirmgrößen und Geräten.
     -   Durchführung einer Barrierefreiheitsprüfung mit Browser-Tools, um sicherzustellen, dass alle `shadcn/ui`-Komponenten korrekt implementiert sind.
 
 ---
@@ -111,7 +117,11 @@ Der letzte Schritt besteht darin, alle Überreste des alten Systems zu entfernen
   - Icons vollständig auf `lucide-react` konsolidiert.
 
 - Ausstehend/Nächste Schritte:
+  - **Responsive Design vervollständigen** (laufend - mitten drin)
+    - Mobile und Tablet-Layouts optimieren
+    - Touch-Interaktionen für kleinere Geräte verbessern
+    - Breakpoint-spezifische Anpassungen finalisieren
   - `select` und `checkbox` via `shadcn` ergänzen und im LabelPanel umstellen (GEMS/Trigger).
   - Button-Variants/Theme verfeinern (Prominenz der Primäraktionen erhöhen).
-  - Responsiveness/A11y-Review und visuelle Feinarbeit.
+  - A11y-Review nach Abschluss des responsiven Designs.
   - Optional: Eigener CORS-Proxy und Gemini-Backend-Proxy evaluieren.

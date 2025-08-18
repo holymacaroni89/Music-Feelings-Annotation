@@ -86,7 +86,12 @@ Dieses Dokument fasst den aktuellen Stand der Anwendung zusammen, bewertet die l
 - Buttons (Header/Footer/MarkerList) (erledigt)
 - Slider (Header/LabelPanel) (erledigt)
 - Icons → lucide-react (erledigt)
-- Nächste: Select/Checkbox (LabelPanel), Button-Variants/Theme, A11y/Responsive Review
+- Nächste: Select/Checkbox (LabelPanel), Button-Variants/Theme
+
+3) Responsive Design-Überarbeitung (laufend - mitten drin)
+- Responsive Layout-Verbesserungen begonnen, aber noch nicht abgeschlossen
+- Besonders auf kleineren Geräten funktioniert das responsive Design noch nicht optimal
+- Weitere Anpassungen für mobile und Tablet-Ansichten erforderlich
 
 3) Stabilität/Netzwerk (geplant)
 - CORS-Proxy-Strategie (Genius) evaluieren; evtl. Mini-Proxy
@@ -132,12 +137,14 @@ Dieses Dokument fasst den aktuellen Stand der Anwendung zusammen, bewertet die l
   - Risiko: Niedrig (keine Laufzeitabhängigkeit, aber Klarheit im Repo steigt).
 
 ## Priorisierte nächste Schritte (Vorschlag)
-1. Tailwind konsolidieren (Vite-only), `index.html` bereinigen (CDN/Import-Maps) und `src/index.css` importieren.
-2. Gemini-Key-Strategie festlegen (kurzfristig Vite Env, mittelfristig Proxy-Entwurf).
-3. Root-Duplikate bereinigen, `src/` als Single-Source-of-Truth.
-4. shadcn initialisieren und Dialog/Button/Input/Slider/Tooltip einführen; `Modal.tsx` ersetzen.
-5. Icons → `lucide-react`; anschließend LabelPanel/MarkerList UI konsolidieren.
-6. CORS-Proxy-Strategie für Genius evaluieren (Stabilität/Rate-Limits).
+1. **Responsive Design vervollständigen** (hohe Priorität - bereits begonnen)
+   - Mobile und Tablet-Layouts optimieren
+   - Touch-Interaktionen für kleinere Geräte verbessern
+   - Breakpoint-spezifische Anpassungen finalisieren
+2. Select/Checkbox-Komponenten hinzufügen und LabelPanel vollständig migrieren
+3. Button-Variants und Theme vereinheitlichen
+4. A11y-Review nach Abschluss des responsiven Designs
+5. CORS-Proxy-Strategie für Genius evaluieren (Stabilität/Rate-Limits)
 
 ## Offene Entscheidungen
 - Gemini-Anbindung: Sofort clientseitig (schnell) vs. Proxy (sicher/skalierbar)?

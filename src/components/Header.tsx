@@ -1,160 +1,333 @@
-import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { PlayIcon, PauseIcon, ZoomInIcon, ZoomOutIcon, MarkerIcon, VolumeIcon, UserIcon, PlusIcon, SparklesIcon, LyricsIcon, SettingsIcon } from './icons';
-import { Profile, TrackInfo } from '../types';
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import {
+  PlayIcon,
+  PauseIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+  MarkerIcon,
+  VolumeIcon,
+  SparklesIcon,
+  LyricsIcon,
+  VisualizationSettingsIcon,
+  ApiKeyIcon,
+} from "./icons";
+import ProfileSelector from "./ProfileSelector";
+import { Profile, TrackInfo } from "../types";
+
+// Pull-to-refresh hook
+const usePullToRefresh = (onRefresh: () => void) => {
+  const [pullDistance, setPullDistance] = React.useState(0);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const touchStartY = React.useRef(0);
+  const maxPullDistance = 80;
+  const refreshThreshold = 60;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+    setPullDistance(0);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - touchStartY.current;
+
+    // Only allow pull down when at top of page
+    if (window.scrollY === 0 && deltaY > 0) {
+      e.preventDefault();
+      const distance = Math.min(deltaY * 0.5, maxPullDistance);
+      setPullDistance(distance);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > refreshThreshold && !isRefreshing) {
+      setIsRefreshing(true);
+      onRefresh();
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setPullDistance(0);
+      }, 1000);
+    } else {
+      setPullDistance(0);
+    }
+  };
+
+  return {
+    pullDistance,
+    isRefreshing,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+  };
+};
 
 interface HeaderProps {
-    fileInputRef: React.RefObject<HTMLInputElement>;
-    onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    profiles: Profile[];
-    activeProfileId: string;
-    onActiveProfileIdChange: (id: string) => void;
-    onAddNewProfileClick: () => void;
-    onOpenApiSettings: () => void;
-    trainingDataCount: number;
-    minTrainingSamples: number;
-    onRefineProfile: () => void;
-    trainingStatus: 'idle' | 'training' | 'done';
-    trackInfo: TrackInfo | null;
-    onEditLyricsClick: () => void;
-    onAnalyzeEmotions: () => void;
-    canAnalyzeEmotions?: boolean;
-    analyzeDisabledReason?: string;
-    isProcessing: boolean;
-    isPlaying: boolean;
-    onTogglePlayPause: () => void;
-    pendingMarkerStart: number | null;
-    onMarkerCreationToggle: () => void;
-    currentTime: number;
-    volume: number;
-    onVolumeChange: (volume: number) => void;
-    onZoom: (direction: 'in' | 'out') => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  profiles: Profile[];
+  activeProfileId: string;
+  onActiveProfileIdChange: (id: string) => void;
+  onAddNewProfileClick: () => void;
+  onOpenApiSettings: () => void;
+  trainingDataCount: number;
+  minTrainingSamples: number;
+  onRefineProfile: () => void;
+  trainingStatus: "idle" | "training" | "done";
+  trackInfo: TrackInfo | null;
+  onEditLyricsClick: () => void;
+  onAnalyzeEmotions: () => void;
+  canAnalyzeEmotions?: boolean;
+  analyzeDisabledReason?: string;
+  isProcessing: boolean;
+  isPlaying: boolean;
+  onTogglePlayPause: () => void;
+  pendingMarkerStart: number | null;
+  onMarkerCreationToggle: () => void;
+  currentTime: number;
+  volume: number;
+  onVolumeChange: (volume: number) => void;
+  onZoom: (direction: "in" | "out") => void;
+  onOpenSettings: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
-    fileInputRef,
-    onFileChange,
-    profiles,
-    activeProfileId,
-    onActiveProfileIdChange,
-    onAddNewProfileClick,
-    onOpenApiSettings,
-    trainingDataCount,
-    minTrainingSamples,
-    onRefineProfile,
-    trainingStatus,
-    trackInfo,
-    onEditLyricsClick,
-    onAnalyzeEmotions,
-    canAnalyzeEmotions = true,
-    analyzeDisabledReason,
-    isProcessing,
-    isPlaying,
-    onTogglePlayPause,
-    pendingMarkerStart,
-    onMarkerCreationToggle,
-    currentTime,
-    volume,
-    onVolumeChange,
-    onZoom,
+  fileInputRef,
+  onFileChange,
+  profiles,
+  activeProfileId,
+  onActiveProfileIdChange,
+  onAddNewProfileClick,
+  onOpenApiSettings,
+  trainingDataCount,
+  minTrainingSamples,
+  onRefineProfile,
+  trainingStatus,
+  trackInfo,
+  onEditLyricsClick,
+  onAnalyzeEmotions,
+  canAnalyzeEmotions = true,
+  analyzeDisabledReason,
+  isProcessing,
+  isPlaying,
+  onTogglePlayPause,
+  pendingMarkerStart,
+  onMarkerCreationToggle,
+  currentTime,
+  volume,
+  onVolumeChange,
+  onZoom,
+  onOpenSettings,
 }) => {
-    const formatTime = (seconds: number): string => {
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    };
+  // Pull-to-refresh for reloading audio
+  const pullToRefresh = usePullToRefresh(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  });
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(
+      2,
+      "0"
+    )}`;
+  };
 
-    const refineButtonText = trainingStatus === 'training' ? 'Training...' : trainingStatus === 'done' ? 'Done!' : 'Refine Profile';
+  const refineButtonText =
+    trainingStatus === "training"
+      ? "Training..."
+      : trainingStatus === "done"
+      ? "Done!"
+      : "Refine Profile";
 
-    return (
-        <header className="flex items-center justify-between p-2 bg-gray-800 border-b border-gray-700 flex-shrink-0">
-            <div className="flex items-center gap-4">
-                <Button onClick={() => fileInputRef.current?.click()} className="bg-blue-500 hover:bg-blue-400 text-white font-bold">
-                    Load Audio
+  return (
+    <header
+      className="bg-gray-900 border-b border-gray-800 flex-shrink-0 shadow-lg w-full relative"
+      onTouchStart={pullToRefresh.handleTouchStart}
+      onTouchMove={pullToRefresh.handleTouchMove}
+      onTouchEnd={pullToRefresh.handleTouchEnd}
+    >
+      {/* Pull-to-refresh indicator */}
+      {pullToRefresh.pullDistance > 0 && (
+        <div
+          className="absolute top-0 left-0 right-0 bg-accent-600 text-white text-center py-2 text-sm transition-all duration-200"
+          style={{
+            transform: `translateY(-${Math.max(
+              0,
+              40 - pullToRefresh.pullDistance
+            )}px)`,
+            opacity: pullToRefresh.pullDistance / 60,
+          }}
+        >
+          {pullToRefresh.isRefreshing
+            ? "Loading..."
+            : pullToRefresh.pullDistance > 60
+            ? "Release to reload audio"
+            : "Pull to reload audio"}
+        </div>
+      )}
+
+      {/* Main Header Card - Optimized for vertical space */}
+      <div className="p-2 lg:p-3">
+        {/* Top Row - Primary Actions with compact spacing */}
+        <div className="flex items-center justify-between gap-4 mb-2">
+          {/* Primary Action - Load Audio */}
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            variant="primary"
+            size="lg"
+            className="flex-shrink-0"
+          >
+            Load Audio
+          </Button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={onFileChange}
+            accept=".mp3,.wav,.flac"
+            className="hidden"
+          />
+
+          {/* Profile & Training - Improved spacing and grouping */}
+          <div className="flex items-center gap-4">
+            <ProfileSelector
+              profiles={profiles}
+              activeProfileId={activeProfileId}
+              onProfileChange={onActiveProfileIdChange}
+              onAddNewProfile={onAddNewProfileClick}
+            />
+
+            {/* Training Points - Enhanced visual design */}
+            <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-2 border border-gray-700">
+              <span className="text-sm text-gray-300 tabular-nums font-medium">
+                <span className="hidden sm:inline">
+                  {trainingDataCount} training points
+                </span>
+                <span className="sm:hidden">{trainingDataCount}pts</span>
+              </span>
+              {trainingDataCount >= minTrainingSamples && (
+                <Button
+                  onClick={onRefineProfile}
+                  disabled={trainingStatus === "training"}
+                  variant="secondary"
+                  size="sm"
+                  className="h-6 px-2 text-xs bg-info-600 hover:bg-info-700 text-info-50"
+                >
+                  <SparklesIcon />
+                  <span className="hidden sm:inline ml-1">
+                    {refineButtonText}
+                  </span>
                 </Button>
-                <input type="file" ref={fileInputRef} onChange={onFileChange} accept=".mp3,.wav,.flac" className="hidden" />
-                <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
-                    <UserIcon />
-                    <select
-                        value={activeProfileId || ''}
-                        onChange={e => onActiveProfileIdChange(e.target.value)}
-                        className="bg-gray-700 border border-gray-600 text-gray-200 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                        {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    <Button onClick={onAddNewProfileClick} variant="ghost" size="icon" className="p-1.5 rounded-md bg-gray-700 hover:bg-gray-600" title="Add new profile">
-                        <PlusIcon />
-                    </Button>
-                     <div className="text-xs text-gray-400 ml-2 tabular-nums flex items-center gap-3" title="Number of annotations collected for training the personal AI model.">
-                        <span>{trainingDataCount} training points</span>
-                        {trainingDataCount >= minTrainingSamples && (
-                            <Button
-                                onClick={onRefineProfile}
-                                disabled={trainingStatus === 'training'}
-                                className="px-2 py-1 text-xs rounded-md flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-wait"
-                            >
-                                <SparklesIcon/>
-                                {refineButtonText}
-                            </Button>
-                        )}
-                    </div>
-                </div>
-                 <div className="flex items-center gap-2">
-                    {trackInfo && <span className="text-gray-300 truncate max-w-xs">{trackInfo.name}</span>}
-                    {trackInfo && (
-                        <Button onClick={onEditLyricsClick} variant="ghost" size="icon" className="p-1.5 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white" title="Find Lyrics & Info">
-                            <LyricsIcon />
-                        </Button>
-                    )}
-                    {trackInfo && (
-                        <Button
-                            onClick={onAnalyzeEmotions}
-                            disabled={isProcessing || !canAnalyzeEmotions}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm"
-                            title={canAnalyzeEmotions ? "Analyze emotions with AI" : (analyzeDisabledReason || "AI analysis unavailable")}
-                        >
-                            <SparklesIcon />
-                            <span>Analyze Emotions</span>
-                        </Button>
-                    )}
-                </div>
+              )}
             </div>
-            {trackInfo && (
-                <div className="flex items-center gap-4">
-                     <button onClick={onTogglePlayPause} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
-                        {isPlaying ? <PauseIcon /> : <PlayIcon />}
-                    </button>
-                    <button 
-                        onClick={onMarkerCreationToggle} 
-                        className={`p-2 rounded-full text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${pendingMarkerStart !== null ? 'bg-yellow-300 text-yellow-900 hover:bg-yellow-400' : 'bg-gray-700 hover:bg-gray-600'}`} 
-                        title={pendingMarkerStart !== null ? "Set Marker End (M)" : "Set Marker Start (M)"} 
-                        disabled={!trackInfo}
-                    >
-                        <MarkerIcon />
-                    </button>
-                    <div className="text-lg font-mono text-gray-200 w-32 text-center">
-                       {formatTime(currentTime)} / {formatTime(trackInfo.duration_s)}
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-300 w-48">
-                        <VolumeIcon />
-                        <Slider
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={[volume]}
-                          onValueChange={(v) => onVolumeChange(v[0] ?? 0)}
-                        />
-                    </div>
-                </div>
-            )}
-            <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-400">Zoom:</span>
+          </div>
+        </div>
+
+        {/* Middle Row - Track Info & Secondary Actions with compact spacing */}
+        {trackInfo && (
+          <div className="flex items-center justify-between gap-4 py-1">
+            {/* Track Info Group */}
+            <div className="flex items-center gap-4 min-w-0 flex-1">
+              <span className="text-gray-200 truncate font-medium text-base">
+                {trackInfo.name}
+              </span>
+              <Button
+                onClick={onEditLyricsClick}
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors duration-200 flex-shrink-0 rounded-lg"
+                title="Find Lyrics & Info"
+              >
+                <LyricsIcon />
+              </Button>
+            </div>
+
+            {/* Secondary Action - Analyze with enhanced styling */}
+            <Button
+              onClick={onAnalyzeEmotions}
+              disabled={isProcessing || !canAnalyzeEmotions}
+              variant="secondary"
+              size="lg"
+              className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-accent-600 via-accent-500 to-info-500 hover:from-accent-700 hover:via-accent-600 hover:to-info-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 flex-shrink-0 font-semibold"
+              title={
+                canAnalyzeEmotions
+                  ? "Analyze emotions with AI"
+                  : analyzeDisabledReason || "AI analysis unavailable"
+              }
+            >
+              <SparklesIcon />
+              <span className="hidden sm:inline">Analyze Emotions</span>
+              <span className="sm:hidden">Analyze</span>
+            </Button>
+          </div>
+        )}
+
+        {/* Bottom Row - Audio Controls & Settings (desktop only, compact layout) */}
+        {trackInfo && (
+          <div className="hidden lg:flex items-center justify-between gap-4 pt-2 mt-2 border-t border-gray-700">
+            {/* Audio Controls Group - Left */}
+            <div className="flex items-center gap-6">
+              {/* Playback Controls */}
+              <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2 border border-gray-700">
+                <Button
+                  onClick={onTogglePlayPause}
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 rounded-lg hover:bg-gray-700 text-white transition-all duration-200"
+                >
+                  {isPlaying ? <PauseIcon /> : <PlayIcon />}
+                </Button>
+                <Button
+                  onClick={onMarkerCreationToggle}
+                  variant="ghost"
+                  size="icon"
+                  className={`h-9 w-9 rounded-lg text-white transition-all duration-200 ${
+                    pendingMarkerStart !== null
+                      ? "bg-warning-400 text-warning-950 hover:bg-warning-500"
+                      : "hover:bg-gray-700"
+                  }`}
+                  title={
+                    pendingMarkerStart !== null
+                      ? "Set Marker End (M)"
+                      : "Set Marker Start (M)"
+                  }
+                >
+                  <MarkerIcon />
+                </Button>
+              </div>
+
+              {/* Time Display */}
+              <div className="text-base font-mono text-gray-200 bg-gray-800 px-4 py-2 rounded-lg border border-gray-700">
+                <span className="font-medium">
+                  {formatTime(currentTime)} / {formatTime(trackInfo.duration_s)}
+                </span>
+              </div>
+
+              {/* Volume Control */}
+              <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2 border border-gray-700">
+                <VolumeIcon />
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={[volume]}
+                  onValueChange={(v) => onVolumeChange(v[0] ?? 0)}
+                  className="w-24 [&_[role=slider]]:bg-accent-500 [&_[role=slider]]:hover:bg-accent-400"
+                />
+              </div>
+            </div>
+
+            {/* Tools & Settings Group - Right */}
+            <div className="flex items-center gap-4">
+              {/* Zoom Controls Group */}
+              <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-2 py-1 border border-gray-700">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="rounded-full text-white"
-                  onClick={() => onZoom('in')}
+                  className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors duration-200 rounded-md"
+                  onClick={() => onZoom("in")}
                   title="Zoom In"
                 >
                   <ZoomInIcon />
@@ -162,24 +335,41 @@ const Header: React.FC<HeaderProps> = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="rounded-full text-white"
-                  onClick={() => onZoom('out')}
+                  className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors duration-200 rounded-md"
+                  onClick={() => onZoom("out")}
                   title="Zoom Out"
                 >
                   <ZoomOutIcon />
                 </Button>
+              </div>
+
+              {/* Settings Group */}
+              <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-2 py-1 border border-gray-700">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="rounded-full text-white ml-2"
+                  className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors duration-200 rounded-md"
+                  onClick={onOpenSettings}
+                  title="Visualization Settings"
+                >
+                  <VisualizationSettingsIcon />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors duration-200 rounded-md"
                   onClick={onOpenApiSettings}
                   title="API Key Settings"
                 >
-                  <SettingsIcon />
+                  <ApiKeyIcon />
                 </Button>
+              </div>
             </div>
-        </header>
-    );
+          </div>
+        )}
+      </div>
+    </header>
+  );
 };
 
 export default Header;
