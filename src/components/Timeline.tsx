@@ -209,26 +209,7 @@ const Timeline: React.FC<TimelineProps> = ({
       }
     }
 
-    // MER Suggestions (Diamonds)
-    ctx.fillStyle = "rgba(210, 153, 34, 0.9)"; // yellow-300
-    ctx.strokeStyle = "#34290f"; // yellow-900
-    ctx.lineWidth = 1;
-    suggestions.forEach((suggestion) => {
-      const x = getXFromTime(suggestion.time);
-      const y = 8; // near the top
-      const size = 5;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.beginPath();
-      ctx.moveTo(0, -size);
-      ctx.lineTo(size, 0);
-      ctx.lineTo(0, size);
-      ctx.lineTo(-size, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    });
+    // MER Suggestions are now rendered as HTML elements above the canvas
 
     // Markers
     markers.forEach((marker) => {
@@ -282,7 +263,6 @@ const Timeline: React.FC<TimelineProps> = ({
     mouseTime,
     waveform,
     colorPalette,
-    suggestions,
     hoveredMarkerId,
   ]);
 
@@ -741,72 +721,78 @@ const Timeline: React.FC<TimelineProps> = ({
             height: "100%",
           }}
         />
-        {hoveredSuggestion &&
-          (() => {
-            const markerX = getXFromTime(hoveredSuggestion.time);
-            const tooltipWidth = 224; // w-56 = 14rem = 224px
-            const viewportWidth = scrollerRef.current?.clientWidth || 0;
-            const padding = 8; // Mindestabstand zum Rand
 
-            // Intelligente horizontale Positionierung
-            let left = markerX;
-            let transform = "translateX(-50%)"; // Standard: zentriert
+        {/* Interactive Suggestion Elements */}
+        {suggestions.map((suggestion, index) => {
+          const x = getXFromTime(suggestion.time);
+          const y = 8; // near the top
 
-            if (markerX - tooltipWidth / 2 < padding) {
-              // Zu weit links → linksbündig ausrichten
-              left = padding;
-              transform = "translateX(0)";
-            } else if (markerX + tooltipWidth / 2 > viewportWidth - padding) {
-              // Zu weit rechts → rechtsbündig ausrichten
-              left = viewportWidth - tooltipWidth - padding;
-              transform = "translateX(0)";
-            }
-
-            return (
+          return (
+            <div
+              key={`suggestion-${suggestion.time}-${index}`}
+              className="absolute w-3 h-3 cursor-pointer transform -translate-x-1/2 -translate-y-1/2"
+              style={{
+                left: `${x}px`,
+                top: `${y}px`,
+              }}
+              onMouseEnter={() => setHoveredSuggestion(suggestion)}
+              onMouseLeave={() => setHoveredSuggestion(null)}
+              onClick={() => onSuggestionClick(suggestion)}
+            >
+              {/* Diamond shape using CSS */}
               <div
-                className="absolute z-10 p-2 text-xs text-white bg-gray-800 border border-gray-600 rounded-md shadow-lg pointer-events-none w-56"
+                className="w-3 h-3 bg-yellow-300 border border-yellow-900 transform rotate-45"
                 style={{
-                  left: `${left}px`,
-                  top: "18px", // Position below the diamond
-                  transform,
-                  opacity: 1,
-                  transition: "opacity 0.1s ease-in-out",
+                  boxShadow: "0 0 4px rgba(210, 153, 34, 0.5)",
                 }}
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-2.5 h-2.5 rounded-full ${
-                      hoveredSuggestion.gems
-                        ? GEMS_COLORS[hoveredSuggestion.gems]
-                        : "bg-gray-500"
-                    }`}
-                  ></div>
-                  <span className="font-bold text-gray-100">
-                    {hoveredSuggestion.gems || "Suggestion"}
+              />
+            </div>
+          );
+        })}
+
+        {/* Fixed Position Tooltip - No Layout Shifts */}
+        {hoveredSuggestion && (
+          <div
+            className="absolute z-50 p-3 text-xs text-white bg-gray-800 border border-gray-600 rounded-lg shadow-xl pointer-events-none max-w-[280px]"
+            style={{
+              left: `${getXFromTime(hoveredSuggestion.time)}px`,
+              top: "24px", // Position below the diamond
+              transform: "translateX(-50%)", // Center on the diamond
+            }}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  hoveredSuggestion.gems
+                    ? GEMS_COLORS[hoveredSuggestion.gems]
+                    : "bg-gray-500"
+                }`}
+              ></div>
+              <span className="font-bold text-gray-100">
+                {hoveredSuggestion.gems || "Suggestion"}
+              </span>
+              <span className="text-gray-400 font-mono ml-auto">
+                @{hoveredSuggestion.time.toFixed(1)}s
+              </span>
+            </div>
+            <div className="space-y-2 text-gray-300">
+              {hoveredSuggestion.sync_notes && (
+                <div>
+                  <span className="font-semibold text-gray-400 mr-1">
+                    Sync:
                   </span>
-                  <span className="text-gray-400 font-mono ml-auto">
-                    @{hoveredSuggestion.time.toFixed(1)}s
+                  <span className="text-sm">
+                    {hoveredSuggestion.sync_notes}
                   </span>
                 </div>
-                <div className="mt-1 space-y-1 text-gray-300">
-                  {hoveredSuggestion.sync_notes && (
-                    <p>
-                      <span className="font-semibold text-gray-400 mr-1">
-                        Sync:
-                      </span>
-                      {hoveredSuggestion.sync_notes}
-                    </p>
-                  )}
-                  <p>
-                    <span className="font-semibold text-gray-400 mr-1">
-                      Audio:
-                    </span>
-                    {hoveredSuggestion.reason}
-                  </p>
-                </div>
+              )}
+              <div>
+                <span className="font-semibold text-gray-400 mr-1">Audio:</span>
+                <span className="text-sm">{hoveredSuggestion.reason}</span>
               </div>
-            );
-          })()}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

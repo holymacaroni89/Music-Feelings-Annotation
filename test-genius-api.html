@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Genius API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        .search-container {
+            margin-bottom: 20px;
+        }
+        input {
+            padding: 10px;
+            width: 300px;
+            margin-right: 10px;
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .song-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background-color: #2a2a2a;
+        }
+        .song-item img {
+            width: 48px;
+            height: 48px;
+            border-radius: 4px;
+            object-fit: cover;
+            background-color: #444;
+        }
+        .song-info h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+        .song-info p {
+            margin: 5px 0 0 0;
+            color: #aaa;
+            font-size: 14px;
+        }
+        .lyrics-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #ff6b6b;
+            padding: 10px;
+            background-color: #2a1a1a;
+            border-radius: 4px;
+        }
+        .loading {
+            color: #ffd93d;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Genius API Test</h1>
+    <p>This test page verifies that thumbnails and complete lyrics are working correctly.</p>
+    
+    <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Enter song title and artist..." value="Norah Jones Sunrise">
+        <button onclick="searchSongs()">Search</button>
+    </div>
+    
+    <div id="apiKeyContainer">
+        <input type="text" id="apiKey" placeholder="Enter your Genius API key..." style="width: 400px;">
+        <button onclick="saveApiKey()">Save API Key</button>
+    </div>
+    
+    <div id="results" class="results"></div>
+    <div id="lyrics" class="lyrics-container" style="display: none;"></div>
+
+    <script type="module">
+        // Import the Genius service functions
+        const API_BASE = 'https://api.genius.com';
+        const PROXY_URL = 'https://corsproxy.io/?';
+        
+        let savedApiKey = localStorage.getItem('geniusApiKey') || '';
+        if (savedApiKey) {
+            document.getElementById('apiKey').value = savedApiKey;
+        }
+        
+        window.saveApiKey = function() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (apiKey) {
+                localStorage.setItem('geniusApiKey', apiKey);
+                alert('API key saved!');
+            }
+        };
+        
+        window.searchSongs = async function() {
+            const query = document.getElementById('searchInput').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            
+            if (!query) {
+                alert('Please enter a search query');
+                return;
+            }
+            
+            if (!apiKey) {
+                alert('Please enter your Genius API key');
+                return;
+            }
+            
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
+            
+            try {
+                const searchUrl = `${API_BASE}/search?q=${encodeURIComponent(query)}`;
+                const proxiedUrl = `${PROXY_URL}${encodeURIComponent(searchUrl)}`;
+
+                const response = await fetch(proxiedUrl, {
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Genius search request failed with status ${response.status}`);
+                }
+
+                const data = await response.json();
+                const songs = data.response.hits.map((hit) => ({
+                    id: hit.result.id,
+                    title: hit.result.title,
+                    artist: hit.result.primary_artist.name,
+                    url: hit.result.url,
+                    thumbnailUrl: hit.result.song_art_image_thumbnail_url || 
+                                 hit.result.header_image_thumbnail_url || 
+                                 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjNEI1NTYzIi8+CjxwYXRoIGQ9Ik0yNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyQzE3LjM3MjYgMTIgMTIgMTcuMzcyNiAxMiAyNEMxMiAzMC42Mjc0IDE3LjM3MjYgMzYgMjQgMzZaIiBzdHJva2U9IiM5Q0EzQUYiIHN0cm9rZS13aWR0aD0iMiIvPgo8cGF0aCBkPSJNMjQgMjhWMjAiIHN0cm9rZT0iIzlDQTNBRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPHA+YXRoIGQ9Ik0yMCAyNEwyOCAyNCIgc3Ryb2tlPSIjOUNBM0FGIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K',
+                }));
+                
+                displayResults(songs, apiKey);
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        };
+        
+        function displayResults(songs, apiKey) {
+            const resultsDiv = document.getElementById('results');
+            
+            if (songs.length === 0) {
+                resultsDiv.innerHTML = '<div>No results found.</div>';
+                return;
+            }
+            
+            const html = songs.map(song => `
+                <div class="song-item">
+                    <img src="${song.thumbnailUrl}" alt="Album art" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjNEI1NTYzIi8+CjxwYXRoIGQ9Ik0yNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyQzE3LjM3MjYgMTIgMTIgMTcuMzcyNiAxMiAyNEMxMiAzMC42Mjc0IDE3LjM3MjYgMzYgMjQgMzZaIiBzdHJva2U9IiM5Q0EzQUYiIHN0cm9rZS13aWR0aD0iMiIvPgo8cGF0aCBkPSJNMjQgMjhWMjAiIHN0cm9rZT0iIzlDQTNBRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPHA+YXRoIGQ9Ik0yMCAyNEwyOCAyNCIgc3Ryb2tlPSIjOUNBM0FGIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K';">
+                    <div class="song-info">
+                        <h3>${song.title}</h3>
+                        <p>${song.artist}</p>
+                        <button onclick="fetchLyrics('${song.url}', '${song.title}', '${song.artist}')">Get Lyrics</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        window.fetchLyrics = async function(songUrl, title, artist) {
+            const lyricsDiv = document.getElementById('lyrics');
+            lyricsDiv.style.display = 'block';
+            lyricsDiv.innerHTML = '<div class="loading">Fetching lyrics...</div>';
+            
+            try {
+                const proxiedUrl = `${PROXY_URL}${encodeURIComponent(songUrl)}`;
+                const response = await fetch(proxiedUrl);
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch lyrics page: ${response.status}`);
+                }
+
+                const html = await response.text();
+                
+                // Use the same improved lyrics extraction logic
+                let lyrics = null;
+
+                // Method 1: Look for data-lyrics-container="true" divs
+                const lyricsContainers = html.match(/<div[^>]*data-lyrics-container="true"[^>]*>.*?<\/div>/gs);
+
+                if (lyricsContainers && lyricsContainers.length > 0) {
+                    lyrics = lyricsContainers
+                        .map(container => {
+                            return container
+                                .replace(/<div[^>]*data-lyrics-container="true"[^>]*>/, '')
+                                .replace(/<\/div>$/, '');
+                        })
+                        .join('\n');
+                }
+
+                // Method 2: If no containers found, try looking for lyrics class patterns
+                if (!lyrics) {
+                    const lyricsClassMatch = html.match(/<div[^>]*class="[^"]*lyrics[^"]*"[^>]*>.*?<\/div>/gs);
+                    if (lyricsClassMatch && lyricsClassMatch.length > 0) {
+                        lyrics = lyricsClassMatch
+                            .map(match => match.replace(/<div[^>]*>/, '').replace(/<\/div>$/, ''))
+                            .join('\n');
+                    }
+                }
+
+                // Method 3: Look for any div containing common lyrics patterns
+                if (!lyrics) {
+                    const potentialLyrics = html.match(/<div[^>]*>[\s\S]*?\[.*?\][\s\S]*?<\/div>/g);
+                    if (potentialLyrics && potentialLyrics.length > 0) {
+                        lyrics = potentialLyrics
+                            .reduce((longest, current) => current.length > longest.length ? current : longest, '')
+                            .replace(/<div[^>]*>/, '')
+                            .replace(/<\/div>$/, '');
+                    }
+                }
+
+                if (!lyrics) {
+                    throw new Error('No lyrics found in HTML using any method');
+                }
+
+                // Clean up the HTML and extract text
+                lyrics = lyrics
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<[^>]*>/g, '')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&#x27;/g, "'")
+                    .replace(/&#39;/g, "'")
+                    .replace(/&nbsp;/g, ' ')
+                    .replace(/\n\s*\n\s*\n/g, '\n\n')
+                    .replace(/^\s+|\s+$/gm, '')
+                    .trim();
+
+                lyricsDiv.innerHTML = `<h3>${title} - ${artist}</h3><pre>${lyrics}</pre>`;
+            } catch (error) {
+                lyricsDiv.innerHTML = `<div class="error">Error fetching lyrics: ${error.message}</div>`;
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import React from "react";
 import Timeline from "./Timeline";
 import MarkerList from "./MarkerList";
+import { Button } from "@/components/ui/button";
 import {
   Marker,
   WaveformPoint,
@@ -99,12 +100,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
           <div className="p-2 sm:p-3 bg-warning-900 bg-opacity-50 border-t border-b border-warning-700 text-warning-200 text-xs flex-shrink-0 shadow-sm w-full">
             <div className="flex justify-between items-center">
               <span className="font-medium">⚠️ Import Warnings:</span>
-              <button
+              <Button
                 onClick={onClearWarnings}
-                className="font-bold hover:text-warning-100 transition-colors duration-200"
+                variant="ghost"
+                size="sm"
+                className="font-bold hover:text-warning-100 text-warning-200"
               >
                 ✕
-              </button>
+              </Button>
             </div>
             <ul className="list-disc list-inside mt-1 sm:mt-2 max-h-16 sm:max-h-20 md:max-h-24 overflow-y-auto space-y-0.5 sm:space-y-1">
               {warnings.map((w, i) => (

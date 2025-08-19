@@ -7,6 +7,7 @@ import LabelPanel from "./components/LabelPanel";
 import Modal from "./components/Modal";
 import SettingsModal from "./components/SettingsModal";
 import BottomNavigation from "./components/BottomNavigation";
+import { Button } from "./components/ui/button";
 import {
   Marker,
   TrackInfo,
@@ -38,6 +39,53 @@ const cleanFileName = (fileName: string): { title: string; artist: string } => {
   // Common separators: -, –, —
   const parts = baseName.split(/ - | – | — /);
   if (parts.length > 1) {
+    // Try to detect which part is the artist vs title
+    // Common patterns: "Artist - Title" or "Title - Artist"
+    // Heuristic: if first part looks like a song title (common words), swap them
+    const firstPart = parts[0].trim().toLowerCase();
+    const secondPart = parts.slice(1).join(" ").trim().toLowerCase();
+
+    // Common song title indicators (not exhaustive, but covers many cases)
+    const titleIndicators = [
+      "love",
+      "heart",
+      "time",
+      "night",
+      "day",
+      "life",
+      "world",
+      "home",
+      "away",
+      "back",
+      "again",
+      "never",
+      "always",
+      "forever",
+      "tonight",
+      "yesterday",
+      "tomorrow",
+      "sunrise",
+      "sunset",
+      "morning",
+      "evening",
+    ];
+
+    const firstHasTitleWords = titleIndicators.some((word) =>
+      firstPart.includes(word)
+    );
+    const secondHasTitleWords = titleIndicators.some((word) =>
+      secondPart.includes(word)
+    );
+
+    // If first part has title words but second doesn't, assume "Title - Artist" format
+    if (firstHasTitleWords && !secondHasTitleWords) {
+      return {
+        title: parts[0].trim(),
+        artist: parts.slice(1).join(" ").trim(),
+      };
+    }
+
+    // Default to "Artist - Title" format
     return { artist: parts[0].trim(), title: parts.slice(1).join(" ").trim() };
   }
   return { title: baseName, artist: "Unknown Artist" };
@@ -160,25 +208,30 @@ const GeniusSearchModal: React.FC<GeniusSearchModalProps> = ({
           </div>
           <div className="bg-gray-700 px-6 py-4 flex justify-between items-center rounded-b-lg flex-shrink-0">
             <div className="flex gap-4">
-              <button
+              <Button
                 onClick={backToSearch}
-                className="text-sm text-blue-400 hover:underline"
+                variant="ghost"
+                size="sm"
+                className="text-blue-400 hover:text-blue-300"
               >
                 ← Back to Search Results
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={onViewRawJson}
-                className="text-sm text-gray-400 hover:underline"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-gray-300"
               >
                 View Raw JSON
-              </button>
+              </Button>
             </div>
-            <button
+            <Button
               onClick={() => handleConfirm(detailedSong)}
-              className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition-colors"
+              variant="primary"
+              size="sm"
             >
               Use This Data for AI Analysis
-            </button>
+            </Button>
           </div>
         </div>
       );
@@ -197,13 +250,14 @@ const GeniusSearchModal: React.FC<GeniusSearchModalProps> = ({
               autoFocus
               disabled={status === "searching"}
             />
-            <button
+            <Button
               type="submit"
-              className="bg-blue-500 hover:bg-blue-400 text-white font-bold p-2 rounded transition-colors flex items-center justify-center w-12"
+              variant="primary"
+              size="icon"
               disabled={status === "searching"}
             >
               {status === "searching" ? <SpinnerIcon /> : <SearchIcon />}
-            </button>
+            </Button>
           </form>
 
           <div className="h-64 overflow-y-auto pr-2">
@@ -231,7 +285,12 @@ const GeniusSearchModal: React.FC<GeniusSearchModalProps> = ({
                     <img
                       src={song.thumbnailUrl}
                       alt="Album art"
-                      className="w-12 h-12 rounded-md object-cover flex-shrink-0"
+                      className="w-12 h-12 rounded-md object-cover flex-shrink-0 bg-gray-600"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src =
+                          "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjNEI1NTYzIi8+CjxwYXRoIGQ9Ik0yNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyQzE3LjM3MjYgMTIgMTIgMTcuMzcyNiAxMiAyNEMxMiAzMC42Mjc0IDE3LjM3MjYgMzYgMjQgMzZaIiBzdHJva2U9IiM5Q0EzQUYiIHN0cm9rZS13aWR0aD0iMiIvPgo8cGF0aCBkPSJNMjQgMjhWMjAiIHN0cm9rZT0iIzlDQTNBRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPHA+YXRoIGQ9Ik0yMCAyNEwyOCAyNCIgc3Ryb2tlPSIjOUNBM0FGIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K";
+                      }}
                     />
                     <div className="min-w-0">
                       <p className="text-white font-semibold truncate">
@@ -679,7 +738,7 @@ const App: React.FC = () => {
         >
           {modalConfig.type === "SEARCH_GENIUS" && trackInfo ? (
             <GeniusSearchModal
-              initialQuery={trackInfo.title
+              initialQuery={`${trackInfo.title} ${trackInfo.artist}`
                 .replace(/ unknown artist/i, "")
                 .trim()}
               geniusSearchState={geniusSearchState}
@@ -701,12 +760,14 @@ const App: React.FC = () => {
                   <h3 className="text-xl font-bold text-gray-100">
                     {modalConfig.title}
                   </h3>
-                  <button
+                  <Button
                     onClick={() => setModalConfig(null)}
-                    className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                    variant="ghost"
+                    size="icon"
+                    className="text-gray-400 hover:text-gray-300"
                   >
                     <XIcon />
-                  </button>
+                  </Button>
                 </div>
 
                 {modalConfig.type === "ADD_PROFILE" && (
@@ -760,18 +821,16 @@ const App: React.FC = () => {
                 )}
               </div>
               <div className="bg-gray-700 px-6 py-4 flex justify-end gap-4 rounded-b-lg">
-                <button
+                <Button
                   onClick={() => setModalConfig(null)}
-                  className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors"
+                  variant="secondary"
+                  size="sm"
                 >
                   Cancel
-                </button>
-                <button
-                  onClick={handleModalSubmit}
-                  className="bg-blue-500 hover:bg-blue-400 text-white font-bold py-2 px-4 rounded transition-colors"
-                >
+                </Button>
+                <Button onClick={handleModalSubmit} variant="primary" size="sm">
                   {modalConfig.submitText}
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -784,12 +843,14 @@ const App: React.FC = () => {
             <h3 className="text-lg font-bold text-gray-100">
               Raw Genius API Response
             </h3>
-            <button
+            <Button
               onClick={() => setShowDebugModal(false)}
-              className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+              variant="ghost"
+              size="icon"
+              className="text-gray-400 hover:text-gray-300"
             >
               <XIcon />
-            </button>
+            </Button>
           </div>
           <div className="p-4 overflow-auto max-h-[80vh]">
             <div className="grid grid-cols-2 gap-4">
