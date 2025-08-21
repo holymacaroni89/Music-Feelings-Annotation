@@ -17,6 +17,7 @@ import {
 import { Marker, GEMS } from "../types";
 import { GEMS_COLORS } from "../constants";
 import { TrashIcon, SearchIcon } from "./icons";
+import { useVirtualScroll } from "../hooks/useVirtualScroll";
 
 interface MarkerListProps {
   markers: Marker[];
@@ -46,6 +47,8 @@ const formatTimeCompact = (seconds: number): string => {
   return `${minutes}:${String(secs).padStart(2, "0")}`;
 };
 
+const ITEM_HEIGHT = 120; // Height of each marker item in pixels
+
 const MarkerList: React.FC<MarkerListProps> = ({
   markers,
   selectedMarkerId,
@@ -58,21 +61,93 @@ const MarkerList: React.FC<MarkerListProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
   const markerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [filterBy, setFilterBy] = useState<FilterOption>("all");
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
+  const [containerHeight, setContainerHeight] = useState(400);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Filter and sort markers
+  // Enhanced search with suggestions
+  const searchSuggestions = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+
+    const query = searchQuery.toLowerCase();
+    const suggestions = new Set<string>();
+
+    // GEMS suggestions
+    Object.values(GEMS).forEach((gems) => {
+      if (gems.toLowerCase().includes(query)) {
+        suggestions.add(gems);
+      }
+    });
+
+    // Time format suggestions
+    if (query.match(/^\d{1,2}$/)) {
+      suggestions.add(`${query}:00`);
+      suggestions.add(`0${query}:00`);
+    }
+
+    // Common search terms
+    const commonTerms = [
+      "wonder",
+      "transcendence",
+      "tenderness",
+      "nostalgia",
+      "peacefulness",
+      "power",
+      "joy",
+      "tension",
+      "sadness",
+    ];
+    commonTerms.forEach((term) => {
+      if (term.includes(query)) {
+        suggestions.add(term);
+      }
+    });
+
+    return Array.from(suggestions).slice(0, 5);
+  }, [searchQuery]);
+
+  // Enhanced search with debouncing and better matching
+  const enhancedSearchFilter = useCallback((marker: Marker, query: string) => {
+    const searchQuery = query.toLowerCase();
+
+    // Exact matches get higher priority
+    if (marker.gems?.toLowerCase() === searchQuery) return 3;
+    if (marker.imagery?.toLowerCase() === searchQuery) return 3;
+
+    // Contains matches
+    if (marker.gems?.toLowerCase().includes(searchQuery)) return 2;
+    if (marker.imagery?.toLowerCase().includes(searchQuery)) return 2;
+    if (marker.sync_notes?.toLowerCase().includes(searchQuery)) return 2;
+
+    // Time format matches
+    const timeStr = formatTime(marker.t_start_s);
+    if (timeStr.includes(searchQuery)) return 1;
+
+    // Partial word matches
+    const words = searchQuery.split(" ");
+    const markerText = `${marker.gems || ""} ${marker.imagery || ""} ${
+      marker.sync_notes || ""
+    }`.toLowerCase();
+
+    return words.some((word) => markerText.includes(word)) ? 1 : 0;
+  }, []);
+
+  // Filter and sort markers with enhanced search
   const filteredAndSortedMarkers = useMemo(() => {
     let filtered = markers;
 
-    // Apply search filter
+    // Apply enhanced search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (marker) =>
-          marker.gems?.toLowerCase().includes(query) ||
-          marker.imagery?.toLowerCase().includes(query) ||
-          marker.sync_notes?.toLowerCase().includes(query) ||
-          formatTime(marker.t_start_s).includes(query)
-      );
+      filtered = filtered
+        .map((marker) => ({
+          marker,
+          searchScore: enhancedSearchFilter(marker, query),
+        }))
+        .filter((item) => item.searchScore > 0)
+        .sort((a, b) => b.searchScore - a.searchScore)
+        .map((item) => item.marker);
     }
 
     // Apply GEMS filter
@@ -105,7 +180,48 @@ const MarkerList: React.FC<MarkerListProps> = ({
     });
 
     return sorted;
-  }, [markers, searchQuery, sortBy, filterBy]);
+  }, [markers, searchQuery, sortBy, filterBy, enhancedSearchFilter]);
+
+  // Virtualization setup for performance
+  const virtualScroll = useVirtualScroll({
+    itemHeight: ITEM_HEIGHT,
+    containerHeight,
+    itemCount: filteredAndSortedMarkers.length,
+    overscan: 3,
+  });
+
+  // Measure container height for virtualization
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerHeight(rect.height);
+      }
+    };
+
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, []);
+
+  // Search history management
+  const addToSearchHistory = useCallback((query: string) => {
+    if (query.trim()) {
+      setSearchHistory((prev) => {
+        const filtered = prev.filter((item) => item !== query);
+        return [query, ...filtered].slice(0, 5);
+      });
+    }
+  }, []);
+
+  const handleSearchSubmit = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      addToSearchHistory(query);
+      setShowSearchSuggestions(false);
+    },
+    [addToSearchHistory]
+  );
 
   // Keyboard navigation handlers
   const handleKeyDown = useCallback(
@@ -191,10 +307,10 @@ const MarkerList: React.FC<MarkerListProps> = ({
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      {/* Header with search and filters - Optimized spacing */}
-      <div className="flex-shrink-0 p-2 border-b border-gray-800 bg-gray-900">
-        <div className="space-y-2">
-          {/* Search */}
+      {/* Header with search and filters - Responsive layout */}
+      <div className="flex-shrink-0 p-3 sm:p-4 border-b border-gray-800 bg-gray-900">
+        <div className="space-y-3 sm:space-y-4">
+          {/* Enhanced Search with Autocomplete */}
           <div className="relative">
             <label htmlFor="marker-search" className="sr-only">
               Search markers by GEMS, imagery, or time
@@ -205,10 +321,68 @@ const MarkerList: React.FC<MarkerListProps> = ({
               type="text"
               placeholder="Search markers..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-8 bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-400 focus:ring-2 focus:ring-accent-400 focus:border-accent-400 hover:bg-gray-600 transition-colors"
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSearchSuggestions(true);
+              }}
+              onFocus={() => setShowSearchSuggestions(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSearchSubmit(searchQuery);
+                } else if (e.key === "Escape") {
+                  setShowSearchSuggestions(false);
+                }
+              }}
+              className="w-full pl-10 pr-8 bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-400 focus:ring-2 focus:ring-accent-400 focus:border-accent-400 hover:bg-gray-600 transition-colors h-10 sm:h-11"
               aria-describedby="search-help"
             />
+
+            {/* Search Suggestions Dropdown */}
+            {showSearchSuggestions &&
+              (searchQuery.trim() || searchHistory.length > 0) && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                  {/* Search Suggestions */}
+                  {searchSuggestions.length > 0 && (
+                    <div className="p-2">
+                      <div className="text-xs text-gray-400 mb-2 px-2">
+                        Suggestions
+                      </div>
+                      {searchSuggestions.map((suggestion, index) => (
+                        <div
+                          key={index}
+                          onClick={() => handleSearchSubmit(suggestion)}
+                          className="w-full text-left px-2 py-2 text-sm text-gray-200 hover:bg-gray-700 rounded transition-colors cursor-pointer"
+                        >
+                          <SearchIcon className="inline w-3 h-3 mr-2 text-gray-400" />
+                          {suggestion}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Search History */}
+                  {searchHistory.length > 0 && (
+                    <div className="p-2 border-t border-gray-600">
+                      <div className="text-xs text-gray-400 mb-2 px-2">
+                        Recent searches
+                      </div>
+                      {searchHistory.map((query, index) => (
+                        <div
+                          key={index}
+                          onClick={() => handleSearchSubmit(query)}
+                          className="w-full text-left px-2 py-2 text-sm text-gray-200 hover:bg-gray-700 rounded transition-colors cursor-pointer"
+                        >
+                          <span className="inline w-3 h-3 mr-2 text-gray-400">
+                            ⏱️
+                          </span>
+                          {query}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
             {searchQuery && (
               <Button
                 onClick={() => setSearchQuery("")}
@@ -226,110 +400,214 @@ const MarkerList: React.FC<MarkerListProps> = ({
             </div>
           </div>
 
-          {/* Filters and Sort - Compact layout */}
-          <div
-            className="flex gap-1 sm:gap-2"
-            role="group"
-            aria-label="Filter and sort controls"
-          >
-            <Select
-              value={filterBy}
-              onValueChange={(value: FilterOption) => setFilterBy(value)}
-            >
-              <SelectTrigger
-                className="flex-1 bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600 focus:ring-2 focus:ring-accent-400"
-                aria-label="Filter markers by GEMS category"
-              >
-                <SelectValue placeholder="Filter by GEMS" />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-800 border-gray-700">
-                <SelectItem value="all">All Markers</SelectItem>
-                <SelectItem value="no-gems">No GEMS</SelectItem>
+          {/* Smart Filter System - Modern toggle buttons and chips */}
+          <div className="space-y-3">
+            {/* GEMS Filter Toggle Buttons */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Filter by Emotion
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {/* All Markers Toggle */}
+                <Button
+                  variant={filterBy === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilterBy("all")}
+                  className={`h-8 px-3 text-xs font-medium transition-all ${
+                    filterBy === "all"
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600"
+                  }`}
+                >
+                  All
+                </Button>
+
+                {/* No GEMS Toggle */}
+                <Button
+                  variant={filterBy === "no-gems" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilterBy("no-gems")}
+                  className={`h-8 px-3 text-xs font-medium transition-all ${
+                    filterBy === "no-gems"
+                      ? "bg-gray-600 hover:bg-gray-700 text-white"
+                      : "bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600"
+                  }`}
+                >
+                  No GEMS
+                </Button>
+
+                {/* GEMS Category Toggles */}
                 {Object.values(GEMS).map((gems) => (
-                  <SelectItem key={gems} value={gems}>
+                  <Button
+                    key={gems}
+                    variant={filterBy === gems ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFilterBy(gems)}
+                    className={`h-8 px-3 text-xs font-medium transition-all ${
+                      filterBy === gems
+                        ? "text-white shadow-lg"
+                        : "bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600"
+                    }`}
+                    style={{
+                      backgroundColor:
+                        filterBy === gems ? GEMS_COLORS[gems] : undefined,
+                      borderColor:
+                        filterBy === gems ? GEMS_COLORS[gems] : undefined,
+                    }}
+                  >
                     {gems}
-                  </SelectItem>
+                  </Button>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            </div>
 
-            <Select
-              value={sortBy}
-              onValueChange={(value: SortOption) => setSortBy(value)}
-            >
-              <SelectTrigger
-                className="flex-1 bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600 focus:ring-2 focus:ring-accent-400"
-                aria-label="Sort markers by criteria"
-              >
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-800 border-gray-700">
-                <SelectItem value="time">Time</SelectItem>
-                <SelectItem value="gems">GEMS</SelectItem>
-                <SelectItem value="valence">Valence</SelectItem>
-                <SelectItem value="arousal">Arousal</SelectItem>
-                <SelectItem value="intensity">Intensity</SelectItem>
-                <SelectItem value="confidence">Confidence</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Sort Options - Modern Toggle Buttons */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Sort by
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "time", label: "Time", icon: "⏱️" },
+                  { value: "gems", label: "GEMS", icon: "🎭" },
+                  { value: "valence", label: "Valence", icon: "😊" },
+                  { value: "arousal", label: "Arousal", icon: "⚡" },
+                  { value: "intensity", label: "Intensity", icon: "🔥" },
+                  { value: "confidence", label: "Confidence", icon: "🎯" },
+                ].map((option) => (
+                  <Button
+                    key={option.value}
+                    variant={sortBy === option.value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSortBy(option.value as SortOption)}
+                    className={`h-8 px-3 text-xs font-medium transition-all ${
+                      sortBy === option.value
+                        ? "bg-accent-600 hover:bg-accent-700 text-white"
+                        : "bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600"
+                    }`}
+                  >
+                    <span className="mr-1">{option.icon}</span>
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
 
-            {/* Clear Filters Button */}
+            {/* Active Filters Display */}
             {(filterBy !== "all" || searchQuery.trim() !== "") && (
-              <Button
-                onClick={() => {
-                  setFilterBy("all");
-                  setSearchQuery("");
-                }}
-                variant="ghost"
-                size="sm"
-                className="text-gray-400 hover:text-gray-200 hover:bg-gray-700 px-2"
-                title="Clear all filters"
-              >
-                Clear
-              </Button>
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-sm text-gray-400">Active filters:</span>
+
+                {/* Search Query Chip */}
+                {searchQuery.trim() && (
+                  <div className="inline-flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded-full text-xs">
+                    <span>Search: "{searchQuery}"</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSearchQuery("")}
+                      className="h-4 w-4 p-0 text-white hover:bg-blue-700 rounded-full"
+                    >
+                      ×
+                    </Button>
+                  </div>
+                )}
+
+                {/* Filter Chip */}
+                {filterBy !== "all" && (
+                  <div
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white"
+                    style={{
+                      backgroundColor:
+                        filterBy === "no-gems"
+                          ? "#6b7280"
+                          : GEMS_COLORS[filterBy as GEMS],
+                    }}
+                  >
+                    <span>{filterBy === "no-gems" ? "No GEMS" : filterBy}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilterBy("all")}
+                      className="h-4 w-4 p-0 text-white hover:bg-black/20 rounded-full"
+                    >
+                      ×
+                    </Button>
+                  </div>
+                )}
+
+                {/* Clear All Button */}
+                <Button
+                  onClick={() => {
+                    setFilterBy("all");
+                    setSearchQuery("");
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-400 hover:text-gray-200 hover:bg-gray-700 px-2 py-1 h-6 text-xs"
+                >
+                  Clear All
+                </Button>
+              </div>
             )}
           </div>
 
-          {/* Results count with active filter indicator */}
-          <div
-            className="flex items-center justify-between text-xs text-gray-400"
-            role="status"
-            aria-live="polite"
-            aria-label={`Showing ${filteredAndSortedMarkers.length} of ${markers.length} markers`}
-          >
-            <span>
-              {filteredAndSortedMarkers.length} of {markers.length} markers
-              {(filterBy !== "all" || searchQuery.trim() !== "") && (
-                <span className="text-accent-400 ml-1">(filtered)</span>
-              )}
-            </span>
-            {searchQuery && (
-              <span className="text-accent-400">
-                Search: "
-                {searchQuery.length > 20
-                  ? searchQuery.substring(0, 20) + "..."
-                  : searchQuery}
-                "
+          {/* Enhanced Results Count with Visual Feedback */}
+          <div className="flex items-center justify-between text-sm">
+            {/* Results Count with Active Filter Indicator */}
+            <div className="flex items-center gap-2">
+              <span className="text-gray-300 font-medium">
+                {filteredAndSortedMarkers.length} of {markers.length} markers
               </span>
-            )}
+
+              {/* Active Filter Indicators */}
+              {filterBy !== "all" && (
+                <div className="inline-flex items-center gap-1 bg-blue-600/20 text-blue-300 px-2 py-1 rounded-full text-xs border border-blue-600/30">
+                  <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                  Filtered
+                </div>
+              )}
+
+              {searchQuery.trim() && (
+                <div className="inline-flex items-center gap-1 bg-green-600/20 text-green-300 px-2 py-1 rounded-full text-xs border border-green-600/30">
+                  <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                  Search
+                </div>
+              )}
+            </div>
+
+            {/* Sort Indicator */}
+            <div className="flex items-center gap-2 text-gray-400">
+              <span className="text-xs">Sorted by:</span>
+              <span className="text-xs font-medium text-gray-300">
+                {sortBy === "time" && "⏱️ Time"}
+                {sortBy === "gems" && "🎭 GEMS"}
+                {sortBy === "valence" && "😊 Valence"}
+                {sortBy === "arousal" && "⚡ Arousal"}
+                {sortBy === "intensity" && "🔥 Intensity"}
+                {sortBy === "confidence" && "🎯 Confidence"}
+              </span>
+            </div>
           </div>
+
+          {/* Performance Indicator for Large Datasets */}
+          {markers.length > 50 && (
+            <div className="text-xs text-gray-500 text-center py-1 bg-gray-800/50 rounded">
+              ⚡ Showing {filteredAndSortedMarkers.length} results from{" "}
+              {markers.length} total markers
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Scrollable marker list */}
+      {/* Virtualized scrollable marker list */}
       <div
-        ref={listRef}
-        className="flex-grow overflow-y-auto p-1 sm:p-2 md:p-3"
-        role="listbox"
-        aria-label="Audio markers"
-        aria-multiselectable="false"
+        ref={containerRef}
+        className="flex-grow overflow-y-auto"
+        onScroll={virtualScroll.handleScroll}
       >
         {filteredAndSortedMarkers.length === 0 ? (
-          <div
-            className="flex justify-center items-center h-32 text-gray-500"
-            role="status"
-            aria-live="polite"
-          >
+          <div className="flex justify-center items-center h-32 text-gray-500 p-4">
             <div className="text-center">
               <p className="text-sm">No markers match your search.</p>
               {searchQuery && (
@@ -345,113 +623,119 @@ const MarkerList: React.FC<MarkerListProps> = ({
             </div>
           </div>
         ) : (
-          <div className="space-y-1 sm:space-y-2 md:space-y-3">
-            {filteredAndSortedMarkers.map((marker, index) => {
-              const isSelected = marker.id === selectedMarkerId;
-              const gemColor = marker.gems
-                ? GEMS_COLORS[marker.gems]
-                : "bg-gray-500 text-gray-50";
+          <div
+            style={{ height: virtualScroll.totalHeight, position: "relative" }}
+          >
+            <div
+              style={{
+                transform: `translateY(${virtualScroll.offsetY}px)`,
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+              }}
+            >
+              {virtualScroll.visibleItems.map((index) => {
+                const marker = filteredAndSortedMarkers[index];
+                if (!marker) return null;
 
-              return (
-                <div
-                  key={marker.id}
-                  ref={(el) => (markerRefs.current[index] = el)}
-                  onClick={() => onSelectMarker(marker.id)}
-                  onFocus={() => setFocusedIndex(index)}
-                  role="option"
-                  aria-selected={isSelected}
-                  aria-label={`Marker at ${formatTime(
-                    marker.t_start_s
-                  )} to ${formatTime(marker.t_end_s)}, ${
-                    marker.gems || "No GEMS"
-                  }, ${marker.imagery || "No imagery"}`}
-                  tabIndex={focusedIndex === index ? 0 : -1}
-                  className={`
-                    group p-3 sm:p-4 rounded-xl cursor-pointer flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4
-                    transition-all duration-200 ease-in-out border-2 border-transparent
-                    hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
-                    focus:outline-none focus:ring-2 focus:ring-accent-400 focus:ring-offset-2 focus:ring-offset-gray-950
-                    ${
-                      isSelected
-                        ? "bg-gradient-to-r from-accent-900/30 to-accent-800/20 ring-2 ring-accent-500 border-accent-600 shadow-xl shadow-accent-500/10"
-                        : "bg-gray-900/80 hover:bg-gray-800/90 hover:border-gray-600/50"
-                    }
-                  `}
-                >
-                  {/* Enhanced layout with better visual hierarchy */}
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-grow min-w-0 w-full">
-                    {/* GEMS indicator and time - Enhanced design */}
-                    <div className="flex items-center gap-3 sm:gap-4">
-                      <div
-                        className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex-shrink-0 shadow-lg ring-2 ring-gray-700 ${gemColor}`}
-                        title={marker.gems || "No GEMS category"}
-                      ></div>
-                      <div className="font-mono text-sm sm:text-base text-gray-200 font-medium w-20 sm:w-28 md:w-32 flex-shrink-0">
-                        <span className="hidden sm:inline">
-                          {formatTime(marker.t_start_s)} -{" "}
-                          {formatTime(marker.t_end_s)}
-                        </span>
-                        <span className="sm:hidden">
-                          {formatTimeCompact(marker.t_start_s)}-
-                          {formatTimeCompact(marker.t_end_s)}
-                        </span>
+                const isSelected = marker.id === selectedMarkerId;
+                const gemColor = marker.gems
+                  ? GEMS_COLORS[marker.gems]
+                  : "bg-gray-500 text-gray-50";
+
+                return (
+                  <div
+                    key={marker.id}
+                    style={{ height: ITEM_HEIGHT }}
+                    onClick={() => onSelectMarker(marker.id)}
+                    className={`
+                      group p-3 sm:p-4 mx-2 mb-2 rounded-xl cursor-pointer flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4
+                      transition-all duration-200 ease-in-out border-2 border-transparent
+                      hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
+                      ${
+                        isSelected
+                          ? "bg-gradient-to-r from-accent-900/30 to-accent-800/20 ring-2 ring-accent-500 border-accent-600 shadow-xl shadow-accent-500/10"
+                          : "bg-gray-900/80 hover:bg-gray-800/90 hover:border-gray-600/50"
+                      }
+                    `}
+                  >
+                    {/* Enhanced layout with better visual hierarchy */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-grow min-w-0 w-full">
+                      {/* GEMS indicator and time - Enhanced design */}
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <div
+                          className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex-shrink-0 shadow-lg ring-2 ring-gray-700 ${gemColor}`}
+                          title={marker.gems || "No GEMS category"}
+                        ></div>
+                        <div className="font-mono text-sm sm:text-base text-gray-200 font-medium w-20 sm:w-28 md:w-32 flex-shrink-0">
+                          <span className="hidden sm:inline">
+                            {formatTime(marker.t_start_s)} -{" "}
+                            {formatTime(marker.t_end_s)}
+                          </span>
+                          <span className="sm:hidden">
+                            {formatTimeCompact(marker.t_start_s)}-
+                            {formatTimeCompact(marker.t_end_s)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Enhanced marker details with better typography */}
+                      <div className="flex flex-col min-w-0 flex-grow space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-bold text-sm sm:text-base truncate">
+                            {marker.gems || "No GEMS"}
+                          </span>
+                          {isSelected && (
+                            <div className="w-2 h-2 bg-accent-400 rounded-full animate-pulse"></div>
+                          )}
+                        </div>
+
+                        {/* Emotional values display */}
+                        <div className="flex gap-3 text-xs text-gray-400">
+                          <span title="Valence">
+                            V: {marker.valence.toFixed(1)}
+                          </span>
+                          <span title="Arousal">
+                            A: {marker.arousal.toFixed(1)}
+                          </span>
+                          <span title="Intensity">I: {marker.intensity}</span>
+                          <span title="Confidence">
+                            C: {marker.confidence.toFixed(1)}
+                          </span>
+                        </div>
+
+                        <p className="text-gray-300 text-sm line-clamp-2 leading-relaxed">
+                          {marker.imagery ||
+                            "No imagery description available."}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Enhanced marker details with better typography */}
-                    <div className="flex flex-col min-w-0 flex-grow space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-bold text-sm sm:text-base truncate">
-                          {marker.gems || "No GEMS"}
-                        </span>
-                        {isSelected && (
-                          <div className="w-2 h-2 bg-accent-400 rounded-full animate-pulse"></div>
-                        )}
-                      </div>
-
-                      {/* Emotional values display */}
-                      <div className="flex gap-3 text-xs text-gray-400">
-                        <span title="Valence">
-                          V: {marker.valence.toFixed(1)}
-                        </span>
-                        <span title="Arousal">
-                          A: {marker.arousal.toFixed(1)}
-                        </span>
-                        <span title="Intensity">I: {marker.intensity}</span>
-                        <span title="Confidence">
-                          C: {marker.confidence.toFixed(1)}
-                        </span>
-                      </div>
-
-                      <p className="text-gray-300 text-sm line-clamp-2 leading-relaxed">
-                        {marker.imagery || "No imagery description available."}
-                      </p>
+                    {/* Enhanced delete button with better UX */}
+                    <div className="flex justify-end sm:justify-start">
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent selection when deleting
+                          onDeleteMarker(marker.id);
+                        }}
+                        variant="destructive"
+                        size="icon"
+                        className="
+                          opacity-0 group-hover:opacity-100 transition-all duration-200 
+                          hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl
+                          w-8 h-8 sm:w-9 sm:h-9 rounded-full
+                          bg-red-600/80 hover:bg-red-500 border border-red-500/50
+                        "
+                        title="Delete Marker"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
-
-                  {/* Enhanced delete button with better UX */}
-                  <div className="flex justify-end sm:justify-start">
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent selection when deleting
-                        onDeleteMarker(marker.id);
-                      }}
-                      variant="destructive"
-                      size="icon"
-                      className="
-                        opacity-0 group-hover:opacity-100 transition-all duration-200
-                        hover:scale-110 active:scale-95 shadow-lg hover:shadow-xl
-                        w-8 h-8 sm:w-9 sm:h-9 rounded-full
-                        bg-red-600/80 hover:bg-red-500 border border-red-500/50
-                      "
-                      title="Delete Marker"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

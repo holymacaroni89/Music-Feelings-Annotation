@@ -7,6 +7,18 @@ import {
   ColorPalette,
 } from "../types";
 import { GEMS_COLORS } from "../constants";
+import {
+  useFloating,
+  useHover,
+  useInteractions,
+  useRole,
+  useDismiss,
+  FloatingPortal,
+  offset,
+  shift,
+  flip,
+  autoUpdate,
+} from "@floating-ui/react";
 
 interface TimelineProps {
   duration: number;
@@ -29,6 +41,112 @@ interface TimelineProps {
   onZoom: (direction: "in" | "out") => void;
 }
 
+// SuggestionTooltip Component with proper Floating UI implementation
+const SuggestionTooltip: React.FC<{
+  suggestion: MerSuggestion;
+  x: number;
+  y: number;
+  onSuggestionClick: (suggestion: MerSuggestion) => void;
+}> = ({ suggestion, x, y, onSuggestionClick }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const { refs, floatingStyles } = useFloating({
+    placement: "top",
+    middleware: [offset(8), shift({ padding: 8 }), flip()],
+    whileElementsMounted: autoUpdate,
+  });
+
+  // Vereinfachte Hover-Logik
+  const handleMouseEnter = useCallback(() => {
+    setIsOpen(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsOpen(false);
+  }, []);
+
+  return (
+    <>
+      {/* Diamond Trigger */}
+      <div
+        ref={refs.setReference}
+        className="absolute w-3 h-3 cursor-pointer transform -translate-x-1/2 -translate-y-1/2"
+        style={{
+          left: `${x}px`,
+          top: `${y}px`,
+        }}
+        onClick={() => onSuggestionClick(suggestion)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <div
+          className="w-3 h-3 bg-yellow-300 border border-yellow-900 transform rotate-45"
+          style={{
+            boxShadow: "0 0 4px rgba(210, 153, 34, 0.5)",
+          }}
+        />
+      </div>
+
+      {/* Floating Tooltip */}
+      {isOpen && (
+        <FloatingPortal>
+          <div
+            ref={refs.setFloating}
+            style={floatingStyles}
+            className="z-50 p-3 text-xs text-white bg-gray-800 border border-gray-600 rounded-lg shadow-xl pointer-events-none max-w-[280px]"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  suggestion.gems === GEMS.Wonder
+                    ? "bg-purple-400"
+                    : suggestion.gems === GEMS.Transcendence
+                    ? "bg-blue-400"
+                    : suggestion.gems === GEMS.Tenderness
+                    ? "bg-pink-300"
+                    : suggestion.gems === GEMS.Nostalgia
+                    ? "bg-yellow-400"
+                    : suggestion.gems === GEMS.Peacefulness
+                    ? "bg-green-400"
+                    : suggestion.gems === GEMS.Power
+                    ? "bg-red-500"
+                    : suggestion.gems === GEMS.JoyfulActivation
+                    ? "bg-yellow-300"
+                    : suggestion.gems === GEMS.Tension
+                    ? "bg-orange-500"
+                    : suggestion.gems === GEMS.Sadness
+                    ? "bg-gray-500"
+                    : "bg-gray-500"
+                }`}
+              />
+              <span className="font-bold text-gray-100">
+                {suggestion.gems || "Suggestion"}
+              </span>
+              <span className="text-gray-400 font-mono ml-auto">
+                @{suggestion.time.toFixed(1)}s
+              </span>
+            </div>
+            <div className="space-y-2 text-gray-300">
+              {suggestion.sync_notes && (
+                <div>
+                  <span className="font-semibold text-gray-400 mr-1">
+                    Sync:
+                  </span>
+                  <span className="text-sm">{suggestion.sync_notes}</span>
+                </div>
+              )}
+              <div>
+                <span className="font-semibold text-gray-400 mr-1">Audio:</span>
+                <span className="text-sm">{suggestion.reason}</span>
+              </div>
+            </div>
+          </div>
+        </FloatingPortal>
+      )}
+    </>
+  );
+};
+
 const Timeline: React.FC<TimelineProps> = ({
   duration,
   currentTime,
@@ -49,8 +167,6 @@ const Timeline: React.FC<TimelineProps> = ({
   const containerRef = useRef<HTMLDivElement>(null); // This is the inner, full-width div
   const scrollerRef = useRef<HTMLDivElement>(null); // This is the outer, scrolling div
   const [mouseTime, setMouseTime] = useState<number | null>(null);
-  const [hoveredSuggestion, setHoveredSuggestion] =
-    useState<MerSuggestion | null>(null);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
 
   const interactionState = useRef<{
@@ -286,12 +402,6 @@ const Timeline: React.FC<TimelineProps> = ({
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     const time = getMouseEventTime(e);
 
-    // Use hovered suggestion if available, for better click accuracy
-    if (hoveredSuggestion) {
-      onSuggestionClick(hoveredSuggestion);
-      return;
-    }
-
     if (pendingMarkerStart !== null) return;
 
     let clickedOnMarker = false;
@@ -310,6 +420,11 @@ const Timeline: React.FC<TimelineProps> = ({
           draggedMarkerId: marker.id,
           draggedHandle: "start",
           dragOffset: time - marker.t_start_s,
+          touchStartPos: null,
+          hasMoved: false,
+          isSwipeGesture: false,
+          swipeStartX: 0,
+          longPressTimer: null,
         };
         clickedOnMarker = true;
       } else if (
@@ -321,6 +436,11 @@ const Timeline: React.FC<TimelineProps> = ({
           draggedMarkerId: marker.id,
           draggedHandle: "end",
           dragOffset: time - marker.t_end_s,
+          touchStartPos: null,
+          hasMoved: false,
+          isSwipeGesture: false,
+          swipeStartX: 0,
+          longPressTimer: null,
         };
         clickedOnMarker = true;
       } else if (x > startX && x < endX) {
@@ -329,6 +449,11 @@ const Timeline: React.FC<TimelineProps> = ({
           draggedMarkerId: marker.id,
           draggedHandle: "body",
           dragOffset: time - marker.t_start_s,
+          touchStartPos: null,
+          hasMoved: false,
+          isSwipeGesture: false,
+          swipeStartX: 0,
+          longPressTimer: null,
         };
         clickedOnMarker = true;
       }
@@ -349,6 +474,11 @@ const Timeline: React.FC<TimelineProps> = ({
         draggedMarkerId: null,
         draggedHandle: null,
         dragOffset: 0,
+        touchStartPos: null,
+        hasMoved: false,
+        isSwipeGesture: false,
+        swipeStartX: 0,
+        longPressTimer: null,
       };
     }
   };
@@ -374,7 +504,6 @@ const Timeline: React.FC<TimelineProps> = ({
         closestSuggestion = suggestion;
       }
     }
-    setHoveredSuggestion(closestSuggestion);
 
     // Cursor and Marker Hover Logic
     let newHoveredMarkerId = null;
@@ -455,7 +584,6 @@ const Timeline: React.FC<TimelineProps> = ({
   const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
     handleMouseUp(e);
     setMouseTime(null);
-    setHoveredSuggestion(null);
     setHoveredMarkerId(null);
     if (e.currentTarget) {
       e.currentTarget.style.cursor = "default";
@@ -497,11 +625,6 @@ const Timeline: React.FC<TimelineProps> = ({
       }
     }, 500); // 500ms for long press
 
-    // Handle suggestions immediately
-    if (hoveredSuggestion) {
-      onSuggestionClick(hoveredSuggestion);
-      return;
-    }
     if (pendingMarkerStart !== null) return;
 
     let clickedOnMarker = false;
@@ -516,11 +639,15 @@ const Timeline: React.FC<TimelineProps> = ({
         x <= startX + handleHitboxWidth / 2
       ) {
         interactionState.current = {
-          ...interactionState.current,
-          isDragging: false, // Don't set dragging yet
+          isDragging: false,
           draggedMarkerId: marker.id,
           draggedHandle: "start",
           dragOffset: time - marker.t_start_s,
+          touchStartPos: interactionState.current.touchStartPos,
+          hasMoved: false,
+          isSwipeGesture: false,
+          swipeStartX: interactionState.current.swipeStartX,
+          longPressTimer: interactionState.current.longPressTimer,
         };
         clickedOnMarker = true;
       } else if (
@@ -528,20 +655,28 @@ const Timeline: React.FC<TimelineProps> = ({
         x <= endX + handleHitboxWidth / 2
       ) {
         interactionState.current = {
-          ...interactionState.current,
-          isDragging: false, // Don't set dragging yet
+          isDragging: false,
           draggedMarkerId: marker.id,
           draggedHandle: "end",
           dragOffset: time - marker.t_end_s,
+          touchStartPos: interactionState.current.touchStartPos,
+          hasMoved: false,
+          isSwipeGesture: false,
+          swipeStartX: interactionState.current.swipeStartX,
+          longPressTimer: interactionState.current.longPressTimer,
         };
         clickedOnMarker = true;
       } else if (x > startX && x < endX) {
         interactionState.current = {
-          ...interactionState.current,
-          isDragging: false, // Don't set dragging yet
+          isDragging: false,
           draggedMarkerId: marker.id,
           draggedHandle: "body",
           dragOffset: time - marker.t_start_s,
+          touchStartPos: interactionState.current.touchStartPos,
+          hasMoved: false,
+          isSwipeGesture: false,
+          swipeStartX: interactionState.current.swipeStartX,
+          longPressTimer: interactionState.current.longPressTimer,
         };
         clickedOnMarker = true;
       }
@@ -686,7 +821,6 @@ const Timeline: React.FC<TimelineProps> = ({
     interactionState.current.dragOffset = 0;
 
     setHoveredMarkerId(null);
-    setHoveredSuggestion(null);
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -722,77 +856,16 @@ const Timeline: React.FC<TimelineProps> = ({
           }}
         />
 
-        {/* Interactive Suggestion Elements */}
-        {suggestions.map((suggestion, index) => {
-          const x = getXFromTime(suggestion.time);
-          const y = 8; // near the top
-
-          return (
-            <div
-              key={`suggestion-${suggestion.time}-${index}`}
-              className="absolute w-3 h-3 cursor-pointer transform -translate-x-1/2 -translate-y-1/2"
-              style={{
-                left: `${x}px`,
-                top: `${y}px`,
-              }}
-              onMouseEnter={() => setHoveredSuggestion(suggestion)}
-              onMouseLeave={() => setHoveredSuggestion(null)}
-              onClick={() => onSuggestionClick(suggestion)}
-            >
-              {/* Diamond shape using CSS */}
-              <div
-                className="w-3 h-3 bg-yellow-300 border border-yellow-900 transform rotate-45"
-                style={{
-                  boxShadow: "0 0 4px rgba(210, 153, 34, 0.5)",
-                }}
-              />
-            </div>
-          );
-        })}
-
-        {/* Fixed Position Tooltip - No Layout Shifts */}
-        {hoveredSuggestion && (
-          <div
-            className="absolute z-50 p-3 text-xs text-white bg-gray-800 border border-gray-600 rounded-lg shadow-xl pointer-events-none max-w-[280px]"
-            style={{
-              left: `${getXFromTime(hoveredSuggestion.time)}px`,
-              top: "24px", // Position below the diamond
-              transform: "translateX(-50%)", // Center on the diamond
-            }}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <div
-                className={`w-3 h-3 rounded-full ${
-                  hoveredSuggestion.gems
-                    ? GEMS_COLORS[hoveredSuggestion.gems]
-                    : "bg-gray-500"
-                }`}
-              ></div>
-              <span className="font-bold text-gray-100">
-                {hoveredSuggestion.gems || "Suggestion"}
-              </span>
-              <span className="text-gray-400 font-mono ml-auto">
-                @{hoveredSuggestion.time.toFixed(1)}s
-              </span>
-            </div>
-            <div className="space-y-2 text-gray-300">
-              {hoveredSuggestion.sync_notes && (
-                <div>
-                  <span className="font-semibold text-gray-400 mr-1">
-                    Sync:
-                  </span>
-                  <span className="text-sm">
-                    {hoveredSuggestion.sync_notes}
-                  </span>
-                </div>
-              )}
-              <div>
-                <span className="font-semibold text-gray-400 mr-1">Audio:</span>
-                <span className="text-sm">{hoveredSuggestion.reason}</span>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Interactive Suggestion Elements with Floating Tooltips */}
+        {suggestions.map((suggestion, index) => (
+          <SuggestionTooltip
+            key={`suggestion-${suggestion.time}-${index}`}
+            suggestion={suggestion}
+            x={getXFromTime(suggestion.time)}
+            y={8}
+            onSuggestionClick={onSuggestionClick}
+          />
+        ))}
       </div>
     </div>
   );

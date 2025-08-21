@@ -74,12 +74,6 @@ const LabelPanel: React.FC<LabelPanelProps> = ({
   onUpdateMarker,
   onDeleteMarker,
 }) => {
-  // Debug-Log hinzufügen
-  console.log("LabelPanel render:", {
-    selectedMarker: selectedMarker?.id,
-    hasMarker: !!selectedMarker,
-  });
-
   // State für das Modal auf kleineren Bildschirmen
   const [showMobileModal, setShowMobileModal] = useState(false);
 
