@@ -8,6 +8,8 @@ import {
   TrackInfo,
   MerSuggestion,
   ColorPalette,
+  TrackData,
+  TrackRenderConfig,
 } from "../types";
 
 interface WorkspaceProps {
@@ -22,11 +24,24 @@ interface WorkspaceProps {
   zoom: number;
   pendingMarkerStart: number | null;
   colorPalette: ColorPalette;
+  // Neue Multi-Track Props
+  tracks?: TrackData[];
+  trackHeight?: number;
+  trackSpacing?: number;
+  trackRenderConfig?: TrackRenderConfig;
+  // Lyrics-Zwischenspeicher Status
+  hasLyricsContext?: boolean;
+  lyricsContextLength?: number;
+  onLyricsStatusClick?: () => void;
   onScrub: (time: number) => void;
   onMarkerSelect: (markerId: string | null) => void;
   onMarkerMove: (markerId: string, start: number, end: number) => void;
   onSuggestionClick: (suggestion: MerSuggestion) => void;
   onZoom: (direction: "in" | "out") => void;
+  // Neue Multi-Track Event Handler
+  onTrackClick?: (trackId: string, time: number, trackIndex: number) => void;
+  onTrackHover?: (trackId: string, time: number, trackIndex: number) => void;
+  onTrackVisibilityChange?: (trackId: string, visible: boolean) => void;
   warnings: string[];
   onClearWarnings: () => void;
   onDeleteMarker: (markerId: string) => void;
@@ -44,21 +59,46 @@ const Workspace: React.FC<WorkspaceProps> = ({
   zoom,
   pendingMarkerStart,
   colorPalette,
+  // Neue Multi-Track Props
+  tracks,
+  trackHeight = 80,
+  trackSpacing = 4,
+  trackRenderConfig,
+  // Lyrics-Zwischenspeicher Status
+  hasLyricsContext = false,
+  lyricsContextLength = 0,
+  onLyricsStatusClick,
   onScrub,
   onMarkerSelect,
   onMarkerMove,
   onSuggestionClick,
   onZoom,
+  // Neue Multi-Track Event Handler
+  onTrackClick,
+  onTrackHover,
+  onTrackVisibilityChange,
   warnings,
   onClearWarnings,
   onDeleteMarker,
 }) => {
+  // Berechne dynamische Timeline-Höhe basierend auf Anzahl der Tracks
+  const timelineHeight =
+    tracks && tracks.length > 0
+      ? Math.max(
+          200,
+          tracks.length * trackHeight + (tracks.length - 1) * trackSpacing
+        )
+      : 160; // Standard-Höhe für Single-Track
+
   return (
     <div className="flex flex-col lg:flex-row flex-grow min-w-0 w-full h-full">
       {/* Main Content Area - Waveform und MarkerList */}
       <div className="flex flex-col flex-grow min-w-0 w-full h-full">
-        {/* Timeline - Optimized height for better MarkerList space */}
-        <div className="h-20 xs:h-24 sm:h-32 md:h-36 lg:h-40 flex-shrink-0 border-b border-gray-800 w-full">
+        {/* Timeline - Dynamische Höhe für Multi-Track */}
+        <div
+          className="flex-shrink-0 border-b border-gray-800 w-full"
+          style={{ height: `${timelineHeight}px` }}
+        >
           {isProcessing && (
             <div className="w-full h-full flex justify-center items-center text-gray-400 bg-gray-950">
               <div className="text-center">
@@ -80,11 +120,24 @@ const Workspace: React.FC<WorkspaceProps> = ({
               zoom={zoom}
               pendingMarkerStart={pendingMarkerStart}
               colorPalette={colorPalette}
+              // Neue Multi-Track Props
+              tracks={tracks}
+              trackHeight={trackHeight}
+              trackSpacing={trackSpacing}
+              trackRenderConfig={trackRenderConfig}
+              // Lyrics-Zwischenspeicher Status
+              hasLyricsContext={hasLyricsContext}
+              lyricsContextLength={lyricsContextLength}
+              onLyricsStatusClick={onLyricsStatusClick}
               onScrub={onScrub}
               onMarkerSelect={onMarkerSelect}
               onMarkerMove={onMarkerMove}
               onSuggestionClick={onSuggestionClick}
               onZoom={onZoom}
+              // Neue Multi-Track Event Handler
+              onTrackClick={onTrackClick}
+              onTrackHover={onTrackHover}
+              onTrackVisibilityChange={onTrackVisibilityChange}
             />
           ) : (
             !isProcessing && (

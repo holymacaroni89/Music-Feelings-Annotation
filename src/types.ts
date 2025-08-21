@@ -18,6 +18,50 @@ export enum Trigger {
   Lyrics = "Lyrics",
 }
 
+// Neue Multi-Track Timeline Typen
+export type TrackType =
+  | "amplitude"
+  | "spectral"
+  | "ki-hotspots"
+  | "structure"
+  | "onsets"
+  | "custom";
+
+export interface TrackData {
+  id: string;
+  type: TrackType;
+  name: string;
+  data: Float32Array | number[];
+  color: string;
+  height: number;
+  visible: boolean;
+  opacity: number;
+  order: number;
+  metadata?: {
+    unit?: string;
+    minValue?: number;
+    maxValue?: number;
+    description?: string;
+  };
+}
+
+export interface MultiTrackTimeline {
+  tracks: TrackData[];
+  trackHeight: number;
+  trackSpacing: number;
+  totalHeight: number;
+  zoomY: number;
+  panY: number;
+}
+
+export interface TrackRenderConfig {
+  showGrid: boolean;
+  showLabels: boolean;
+  showValues: boolean;
+  interpolation: "linear" | "step" | "smooth";
+  fillStyle: "none" | "solid" | "gradient";
+}
+
 export interface Marker {
   id: string; // stable UUID v4
   trackLocalId: string; // z. B. hash des Dateinamens
@@ -57,6 +101,34 @@ export interface WaveformPoint {
   loudness?: number; // Perceptual loudness (0-1, normalized)
   sharpness?: number; // Perceptual sharpness (0-1)
   roughness?: number; // Perceptual roughness (0-1)
+
+  // Neue Eigenschaften für Multi-Track-Visualisierung
+  amplitude?: number; // Normalized amplitude (0-1) für Amplitude-Track
+  emotionIntensity?: number; // KI-basierte Emotions-Intensität (0-1)
+  emotionConfidence?: number; // KI-Confidence für Emotions-Vorhersage (0-1)
+  dominantEmotion?: GEMS | null; // Dominante Emotion zu diesem Zeitpunkt
+  structuralSegment?: string; // Song-Struktur (intro, verse, chorus, etc.)
+
+  // Neue Onset-Features für Text-Synchronisation
+  onsetStrength?: number; // 0-1: Stärke des musikalischen Einsatzes
+  onsetType?: "beat" | "phrase" | "section" | "onset"; // Art des Einsatzes
+  onsetConfidence?: number; // 0-1: Konfidenz der Onset-Erkennung
+  phraseBoundary?: number; // 0-1: Wahrscheinlichkeit einer Phrase-Grenze
+  beatPosition?: number; // 0-1: Position im Beat-Pattern (0 = Beat-1, 0.5 = Off-Beat)
+
+  // Neue erweiterte Audio-Features für bessere KI-Analyse
+  vocalProbability?: number; // 0-1: Wahrscheinlichkeit von Gesang
+  vocalClarity?: number; // 0-1: Klarheit der Stimme
+  vocalIntensity?: number; // 0-1: Intensität der Stimme
+  instrumentalRatio?: number; // 0-1: Verhältnis Instrumental zu Gesang
+  localDynamics?: number; // 0-1: Lokale Dynamik-Änderungen
+  globalDynamics?: number; // 0-1: Globale Dynamik über Zeit
+  dynamicContrast?: number; // 0-1: Kontrast zwischen laut/leise
+  energyFlow?: number; // 0-1: Energiefluss über Zeit
+  harmonicRichness?: number; // 0-1: Reichhaltigkeit der Harmonien
+  dissonanceLevel?: number; // 0-1: Dissonanz-Level
+  chordComplexity?: number; // 0-1: Akkord-Komplexität
+  tonalStability?: number; // 0-1: Tonale Stabilität
 }
 
 export type ColorPalette = "vibrant" | "spectral" | "thermal" | "grayscale";
@@ -99,6 +171,14 @@ export interface AppState {
       artist: string;
       duration_s: number;
     };
+  };
+  // Audio-Datei Persistierung
+  audioFileData?: {
+    name: string;
+    size: number;
+    lastModified: number;
+    arrayBufferBase64?: string; // Base64-kodierte Audio-Daten (neu)
+    arrayBuffer?: ArrayBuffer; // ArrayBuffer (veraltet, für Fallback)
   };
   markers: Marker[];
   // Profile Management

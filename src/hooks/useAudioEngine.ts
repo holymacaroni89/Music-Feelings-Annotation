@@ -1,6 +1,25 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import * as tf from "@tensorflow/tfjs";
 import { WaveformPoint } from "../types";
+import { indexedDBService } from "../services/indexedDBService";
+import {
+  detectOnsets,
+  detectBeatPattern,
+  detectPhraseBoundaries,
+  OnsetFeature,
+} from "../utils/onsetDetection";
+import {
+  detectVocalPresence,
+  analyzeDynamicIntensity,
+  analyzeHarmonicComplexity,
+} from "../utils/audioFeatureExtraction";
+import {
+  normalizeFeatures,
+  calculateFeaturePriority,
+  generateFeatureSummary,
+  NormalizedFeatures,
+  FeaturePriority,
+} from "../utils/featureIntegration";
 
 // Enhanced audio analysis utilities
 const calculateTempo = (onsetTimes: number[], sampleRate: number): number => {
@@ -146,6 +165,11 @@ const generateAdvancedWaveformData = async (
   let allRoughness: number[] = [];
   let allOnsetTimes: number[] = [];
 
+  // Neue erweiterte Features Arrays
+  let allVocalFeatures: any[] = [];
+  let allDynamicFeatures: any[] = [];
+  let allHarmonicFeatures: any[] = [];
+
   for (let i = 0; i < numChunks; i++) {
     const chunkStart = i * samplesPerChunk;
     const chunkEnd = Math.min(chunkStart + samplesPerChunk, totalSamples);
@@ -197,6 +221,10 @@ const generateAdvancedWaveformData = async (
         loudness: [] as number[],
         sharpness: [] as number[],
         roughness: [] as number[],
+        // Neue erweiterte Features
+        vocalFeatures: [] as any[],
+        dynamicFeatures: [] as any[],
+        harmonicFeatures: [] as any[],
       };
 
       for (let frameIdx = 0; frameIdx < magsData.length; frameIdx++) {
@@ -208,7 +236,30 @@ const generateAdvancedWaveformData = async (
         );
         enhancedFeatures.sharpness.push(calculateSharpness(frameMags));
         enhancedFeatures.roughness.push(calculateRoughness(frameMags));
+
+        // Neue erweiterte Features berechnen
+        enhancedFeatures.vocalFeatures.push(
+          detectVocalPresence(frameMags, sampleRate)
+        );
+        enhancedFeatures.harmonicFeatures.push(
+          analyzeHarmonicComplexity(frameMags, sampleRate)
+        );
       }
+
+      // Dynamic-Intensity für den gesamten Chunk berechnen
+      const chunkAmplitudes = [];
+      for (let j = 0; j < magsData.length; j++) {
+        const startIndex = j * hopLength;
+        const endIndex = startIndex + hopLength;
+        let peak = 0;
+        for (let k = startIndex; k < endIndex && k < chunkData.length; k++) {
+          peak = Math.max(peak, Math.abs(chunkData[k]));
+        }
+        chunkAmplitudes.push(peak);
+      }
+      enhancedFeatures.dynamicFeatures.push(
+        analyzeDynamicIntensity(chunkAmplitudes)
+      );
 
       return {
         centroidsArray: Array.from(normalizedCentroids.dataSync()),
@@ -225,6 +276,11 @@ const generateAdvancedWaveformData = async (
     allLoudness.push(...tensorData.enhancedFeatures.loudness);
     allSharpness.push(...tensorData.enhancedFeatures.sharpness);
     allRoughness.push(...tensorData.enhancedFeatures.roughness);
+
+    // Neue erweiterte Features speichern
+    allVocalFeatures.push(...tensorData.enhancedFeatures.vocalFeatures);
+    allDynamicFeatures.push(...tensorData.enhancedFeatures.dynamicFeatures);
+    allHarmonicFeatures.push(...tensorData.enhancedFeatures.harmonicFeatures);
 
     // Calculate amplitude and detect onsets separately on the JS thread
     const numFramesInChunk = tensorData.centroidsArray.length;
@@ -259,8 +315,17 @@ const generateAdvancedWaveformData = async (
   const normalizedFluxArray =
     maxFlux > 0 ? allFluxes.map((f) => f / maxFlux) : allFluxes;
 
-  // Calculate global tempo from all onsets
-  const globalTempo = calculateTempo(allOnsetTimes, sampleRate);
+  // Neue Onset-Detection mit erweiterten Features
+  const onsetFeatures = detectOnsets(audioBuffer);
+  const globalTempo = detectBeatPattern(onsetFeatures);
+  const phraseBoundaries = detectPhraseBoundaries(onsetFeatures);
+
+  // Onset-Features für jeden Waveform-Punkt zuordnen
+  const onsetFeaturesByTime: { [time: number]: OnsetFeature } = {};
+  onsetFeatures.forEach((onset) => {
+    const timeKey = Math.round(onset.time * 10) / 10; // Auf 0.1s runden
+    onsetFeaturesByTime[timeKey] = onset;
+  });
 
   // Normalize enhanced features
   const maxLoudness = Math.max(...allLoudness, 1e-6);
@@ -272,6 +337,9 @@ const generateAdvancedWaveformData = async (
   const normalizedRoughness = allRoughness.map((r) => r / maxRoughness);
 
   const finalWaveform: WaveformPoint[] = [];
+  const normalizedFeatures: NormalizedFeatures[] = [];
+  const featurePriorities: FeaturePriority[] = [];
+
   for (let i = 0; i < allCentroids.length; i++) {
     // Calculate rhythmic complexity based on local onset density
     const timeWindow = 2.0; // 2-second window
@@ -281,7 +349,21 @@ const generateAdvancedWaveformData = async (
     );
     const rhythmicComplexity = Math.min(1.0, nearbyOnsets.length / 8); // Normalize to 0-1
 
-    finalWaveform.push({
+    // Onset-Features für diesen Zeitpunkt finden
+    const pointTime = (i / allCentroids.length) * (totalSamples / sampleRate);
+    const timeKey = Math.round(pointTime * 10) / 10;
+    const onsetFeature = onsetFeaturesByTime[timeKey];
+
+    // Phrase-Boundary-Erkennung
+    const isPhraseBoundary = phraseBoundaries.some(
+      (boundary) => Math.abs(boundary - pointTime) < 0.2
+    );
+
+    // Beat-Position berechnen (0 = Beat-1, 0.5 = Off-Beat)
+    const beatPosition =
+      globalTempo > 0 ? ((pointTime * globalTempo) / 60) % 1 : 0;
+
+    const waveformPoint: WaveformPoint = {
       amp: allAmplitudes[i] || 0,
       spectralCentroid: allCentroids[i] || 0,
       spectralFlux: normalizedFluxArray[i] || 0,
@@ -294,7 +376,51 @@ const generateAdvancedWaveformData = async (
       loudness: normalizedLoudness[i] || 0,
       sharpness: normalizedSharpness[i] || 0,
       roughness: normalizedRoughness[i] || 0,
+
+      // Neue Onset-Features für Text-Synchronisation
+      onsetStrength: onsetFeature?.strength || 0,
+      onsetType: onsetFeature?.type || undefined,
+      onsetConfidence: onsetFeature?.confidence || 0,
+      phraseBoundary: isPhraseBoundary ? 1 : 0,
+      beatPosition: beatPosition,
+
+      // Neue erweiterte Audio-Features für bessere KI-Analyse
+      vocalProbability: allVocalFeatures[i]?.vocalProbability || 0,
+      vocalClarity: allVocalFeatures[i]?.vocalClarity || 0,
+      vocalIntensity: allVocalFeatures[i]?.vocalIntensity || 0,
+      instrumentalRatio: allVocalFeatures[i]?.instrumentalRatio || 0,
+      localDynamics: allDynamicFeatures[Math.floor(i / 50)]?.localDynamics || 0, // Dynamic Features sind pro Chunk
+      globalDynamics:
+        allDynamicFeatures[Math.floor(i / 50)]?.globalDynamics || 0,
+      dynamicContrast:
+        allDynamicFeatures[Math.floor(i / 50)]?.dynamicContrast || 0,
+      energyFlow: allDynamicFeatures[Math.floor(i / 50)]?.energyFlow || 0,
+      harmonicRichness: allHarmonicFeatures[i]?.harmonicRichness || 0,
+      dissonanceLevel: allHarmonicFeatures[i]?.dissonanceLevel || 0,
+      chordComplexity: allHarmonicFeatures[i]?.chordComplexity || 0,
+      tonalStability: allHarmonicFeatures[i]?.tonalStability || 0,
+    };
+
+    // Feature-Normalisierung und -Priorisierung
+    const normalized = normalizeFeatures(waveformPoint);
+    const priority = calculateFeaturePriority(normalized, {
+      tempo: globalTempo,
+      timePosition: i / allCentroids.length,
     });
+
+    normalizedFeatures.push(normalized);
+    featurePriorities.push(priority);
+    finalWaveform.push(waveformPoint);
+  }
+
+  // Debug: Feature-Zusammenfassung für ersten Punkt
+  if (normalizedFeatures.length > 0 && featurePriorities.length > 0) {
+    const firstSummary = generateFeatureSummary(
+      normalizedFeatures[0],
+      featurePriorities[0],
+      { tempo: globalTempo, timePosition: 0 }
+    );
+    console.log("🎵 Erste Feature-Analyse:", firstSummary);
   }
 
   // Downsample to the target number of points for visualization
@@ -326,6 +452,8 @@ export const useAudioEngine = () => {
   const playbackStartTimeRef = useRef(0);
   const playbackOffsetRef = useRef(0);
 
+  // Removed debug logs for cleaner production code
+
   const stopPlayback = useCallback((isManualStop = true) => {
     if (audioSourceRef.current) {
       if (isManualStop) {
@@ -334,7 +462,7 @@ export const useAudioEngine = () => {
       try {
         audioSourceRef.current.stop();
       } catch (e) {
-        // Ignore errors from stopping an already stopped source
+        console.error("Error stopping AudioSource:", e);
       }
       audioSourceRef.current.disconnect();
       audioSourceRef.current = null;
@@ -349,11 +477,32 @@ export const useAudioEngine = () => {
         !audioBuffer ||
         !gainNodeRef.current ||
         audioSourceRef.current
-      )
+      ) {
+        console.error("Cannot start playback - missing dependencies:", {
+          hasAudioContext: !!audioContext,
+          hasAudioBuffer: !!audioBuffer,
+          hasGainNode: !!gainNodeRef.current,
+          hasAudioSource: !!audioSourceRef.current,
+        });
         return;
+      }
+
+      // Überprüfe AudioContext State
+      if (audioContext.state === "suspended") {
+        console.warn("AudioContext is suspended, attempting to resume...");
+        audioContext
+          .resume()
+          .then(() => {
+            console.log("AudioContext resumed successfully");
+          })
+          .catch((e) => {
+            console.error("Failed to resume AudioContext:", e);
+          });
+      }
 
       const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
+
       source.connect(gainNodeRef.current);
 
       const offset = Math.max(
@@ -364,13 +513,19 @@ export const useAudioEngine = () => {
       playbackOffsetRef.current = offset;
       setCurrentTime(offset);
 
-      source.start(0, offset);
-      audioSourceRef.current = source;
-      setIsPlaying(true);
+      try {
+        source.start(0, offset);
+        audioSourceRef.current = source;
+        setIsPlaying(true);
+      } catch (e) {
+        console.error("Error starting AudioSource:", e);
+        return;
+      }
 
       source.onended = () => {
+        // AudioSource ended naturally
         if (audioSourceRef.current === source) {
-          stopPlayback(false); // Not a manual stop, let it fire
+          stopPlayback(false);
           setCurrentTime(audioBuffer.duration);
         }
       };
@@ -384,6 +539,7 @@ export const useAudioEngine = () => {
       playbackOffsetRef.current +
       (audioContext.currentTime - playbackStartTimeRef.current);
     setCurrentTime(newTime);
+
     animationFrameRef.current = requestAnimationFrame(updateTime);
   }, [audioContext, isPlaying]);
 
@@ -412,16 +568,122 @@ export const useAudioEngine = () => {
     try {
       const context = new (window.AudioContext ||
         (window as any).webkitAudioContext)();
+
       const gainNode = context.createGain();
       gainNode.connect(context.destination);
+
       gainNodeRef.current = gainNode;
       setAudioContext(context);
+
+      // Audio-Datei nach AudioContext-Bereitschaft wiederherstellen
+      const restoreAudioFile = async () => {
+        try {
+          console.log("🔍 [AUDIO RESTORE] Starte Audio-Wiederherstellung...");
+
+          // Versuche zuerst IndexedDB
+          try {
+            const audioFiles = await indexedDBService.getDatabaseInfo();
+            console.log("🔍 [AUDIO RESTORE] IndexedDB gefunden:", audioFiles);
+
+            if (audioFiles.audioFilesCount > 0) {
+              // Lade den gespeicherten App State
+              const savedState = await indexedDBService.loadAppState();
+              if (savedState?.currentTrackLocalId) {
+                console.log(
+                  "✅ [AUDIO RESTORE] IndexedDB State gefunden:",
+                  savedState.currentTrackLocalId
+                );
+
+                // Lade die entsprechende Audio-Datei
+                const trackMetadata =
+                  savedState.trackMetadata[savedState.currentTrackLocalId];
+                if (trackMetadata) {
+                  console.log(
+                    "🎵 [AUDIO RESTORE] Lade Audio-Datei:",
+                    trackMetadata.name
+                  );
+
+                  try {
+                    const audioFile = await indexedDBService.loadAudioFile(
+                      trackMetadata.name
+                    );
+                    if (audioFile && audioFile.arrayBuffer) {
+                      console.log(
+                        "✅ [AUDIO RESTORE] Audio-Datei geladen, dekodiere..."
+                      );
+
+                      const decodedBuffer = await context.decodeAudioData(
+                        audioFile.arrayBuffer
+                      );
+                      console.log(
+                        "✅ [AUDIO RESTORE] Audio erfolgreich dekodiert:",
+                        {
+                          duration: decodedBuffer.duration,
+                          channels: decodedBuffer.numberOfChannels,
+                          sampleRate: decodedBuffer.sampleRate,
+                        }
+                      );
+
+                      setAudioBuffer(decodedBuffer);
+                      console.log(
+                        "✅ [AUDIO RESTORE] Audio-Datei erfolgreich wiederhergestellt:",
+                        trackMetadata.name
+                      );
+                      return; // Erfolgreich wiederhergestellt
+                    }
+                  } catch (audioError) {
+                    console.error(
+                      "❌ [AUDIO RESTORE] Fehler beim Laden der Audio-Datei:",
+                      audioError
+                    );
+                  }
+                }
+              }
+            }
+          } catch (indexedDBError) {
+            console.warn(
+              "⚠️ [AUDIO RESTORE] IndexedDB nicht verfügbar, verwende Fallback:",
+              indexedDBError
+            );
+
+            // Fallback: localStorage für Metadaten
+            const savedStateJSON = localStorage.getItem(
+              "music-emotion-annotation-audio-metadata"
+            );
+            if (savedStateJSON) {
+              const metadata = JSON.parse(savedStateJSON);
+              console.log(
+                "🔍 [AUDIO RESTORE] Fallback-Metadaten gefunden:",
+                metadata
+              );
+              console.log(
+                "⚠️ [AUDIO RESTORE] Audio-Datei kann nicht automatisch wiederhergestellt werden"
+              );
+            }
+          }
+
+          console.log(
+            "🔍 [AUDIO RESTORE] Keine Audio-Datei gefunden oder Fehler bei der Wiederherstellung"
+          );
+        } catch (e) {
+          console.error(
+            "❌ [AUDIO RESTORE] Fehler bei der Wiederherstellung:",
+            e
+          );
+          console.error("❌ [AUDIO RESTORE] Stack Trace:", e.stack);
+        }
+      };
+
+      // Kurze Verzögerung für stabilen AudioContext
+      setTimeout(restoreAudioFile, 100);
     } catch (e) {
+      console.error("Failed to create AudioContext:", e);
       alert("Web Audio API is not supported in this browser.");
     }
   }, []);
 
   const resetAudio = () => {
+    // Resetting audio state
     if (isPlaying) stopPlayback();
     setAudioBuffer(null);
     setWaveform(null);
@@ -432,18 +694,22 @@ export const useAudioEngine = () => {
   const initializeAudio = async (decodedBuffer: AudioBuffer) => {
     resetAudio();
     if (audioContext && audioContext.state === "suspended") {
+      console.log("AudioContext suspended, resuming...");
       await audioContext.resume();
+      console.log("AudioContext resumed, new state:", audioContext.state);
     }
     setAudioBuffer(decodedBuffer);
   };
 
   const generateWaveform = useCallback(
     async (buffer: AudioBuffer, detail: number) => {
+      // Generating waveform with detail
       const advancedWaveform = await generateAdvancedWaveformData(
         buffer,
         detail
       );
       setWaveform(advancedWaveform);
+      // Waveform generated successfully
     },
     []
   );
@@ -451,6 +717,7 @@ export const useAudioEngine = () => {
   const scrub = useCallback(
     (time: number) => {
       if (!audioBuffer) return;
+      // Scrubbing to time
       const wasPlaying = isPlaying;
       if (wasPlaying) {
         stopPlayback();
@@ -466,14 +733,30 @@ export const useAudioEngine = () => {
   );
 
   const togglePlayPause = useCallback(() => {
-    if (!audioContext || !audioBuffer) return;
+    // Toggle play/pause called
+
+    if (!audioContext || !audioBuffer) {
+      console.error("Cannot toggle - missing audio context or buffer");
+      return;
+    }
+
     if (audioContext.state === "suspended") {
-      audioContext.resume();
+      console.warn("AudioContext suspended during toggle, resuming...");
+      audioContext
+        .resume()
+        .then(() => {
+          console.log("AudioContext resumed during toggle");
+        })
+        .catch((e) => {
+          console.error("Failed to resume AudioContext during toggle:", e);
+        });
     }
 
     if (isPlaying) {
+      // Currently playing, stopping
       stopPlayback();
     } else {
+      // Currently stopped, starting
       const time = currentTime >= audioBuffer.duration ? 0 : currentTime;
       startPlayback(time);
     }

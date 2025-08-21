@@ -1,18 +1,21 @@
-import React, { useRef, useEffect, useCallback, useState } from "react";
+import React, {
+  useRef,
+  useEffect,
+  useCallback,
+  useState,
+  useMemo,
+} from "react";
 import {
   Marker,
   WaveformPoint,
   MerSuggestion,
   GEMS,
   ColorPalette,
+  TrackData,
+  TrackRenderConfig,
 } from "../types";
-import { GEMS_COLORS } from "../constants";
 import {
   useFloating,
-  useHover,
-  useInteractions,
-  useRole,
-  useDismiss,
   FloatingPortal,
   offset,
   shift,
@@ -30,6 +33,15 @@ interface TimelineProps {
   zoom: number; // pixels per second
   pendingMarkerStart: number | null; // New prop for pending marker
   colorPalette: ColorPalette;
+  // Neue Multi-Track Props
+  tracks?: TrackData[];
+  trackHeight?: number;
+  trackSpacing?: number;
+  trackRenderConfig?: TrackRenderConfig;
+  // Lyrics-Zwischenspeicher Status
+  hasLyricsContext?: boolean;
+  lyricsContextLength?: number;
+  onLyricsStatusClick?: () => void;
   onScrub: (time: number) => void;
   onMarkerSelect: (markerId: string | null) => void;
   onMarkerMove: (
@@ -39,6 +51,10 @@ interface TimelineProps {
   ) => void;
   onSuggestionClick: (suggestion: MerSuggestion) => void;
   onZoom: (direction: "in" | "out") => void;
+  // Neue Multi-Track Event Handler
+  onTrackClick?: (trackId: string, time: number, trackIndex: number) => void;
+  onTrackHover?: (trackId: string, time: number, trackIndex: number) => void;
+  onTrackVisibilityChange?: (trackId: string, visible: boolean) => void;
 }
 
 // SuggestionTooltip Component with proper Floating UI implementation
@@ -157,17 +173,53 @@ const Timeline: React.FC<TimelineProps> = ({
   zoom,
   pendingMarkerStart,
   colorPalette,
+  // Neue Multi-Track Props
+  tracks = [],
+  trackHeight = 80,
+  trackSpacing = 4,
+  trackRenderConfig,
+  // Lyrics-Zwischenspeicher Status
+  hasLyricsContext = false,
+  lyricsContextLength = 0,
+  onLyricsStatusClick,
   onScrub,
   onMarkerSelect,
   onMarkerMove,
   onSuggestionClick,
   onZoom,
+  // Neue Multi-Track Event Handler
+  onTrackClick,
+  onTrackHover,
+  onTrackVisibilityChange,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null); // This is the inner, full-width div
   const scrollerRef = useRef<HTMLDivElement>(null); // This is the outer, scrolling div
   const [mouseTime, setMouseTime] = useState<number | null>(null);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
+
+  // Neue Multi-Track States
+  const [hoveredTrackId, setHoveredTrackId] = useState<string | null>(null);
+  const [trackZoomY, setTrackZoomY] = useState(1);
+  const [trackPanY, setTrackPanY] = useState(0);
+
+  // Multi-Track Konstanten
+  const defaultTrackRenderConfig: TrackRenderConfig = {
+    showGrid: true,
+    showLabels: true,
+    showValues: false,
+    interpolation: "smooth",
+    fillStyle: "gradient",
+    ...trackRenderConfig,
+  };
+
+  // Berechne Gesamthöhe für Multi-Track
+  const totalTrackHeight =
+    tracks.length > 0
+      ? tracks.length * trackHeight + (tracks.length - 1) * trackSpacing
+      : 0;
+
+  const canvasHeight = Math.max(200, totalTrackHeight); // Mindesthöhe 200px
 
   const interactionState = useRef<{
     isDragging: boolean;
@@ -193,6 +245,676 @@ const Timeline: React.FC<TimelineProps> = ({
 
   const getXFromTime = useCallback((time: number) => time * zoom, [zoom]);
   const getTimeFromX = useCallback((x: number) => x / zoom, [zoom]);
+
+  // Neue Multi-Track Hilfsfunktionen
+  const mapAudioFeaturesToTracks = useCallback(
+    (waveform: WaveformPoint[]): TrackData[] => {
+      if (!waveform || waveform.length === 0) return [];
+
+      // Erstelle Standard-Tracks basierend auf verfügbaren Audio-Features
+      const defaultTracks: TrackData[] = [
+        {
+          id: "amplitude",
+          type: "amplitude",
+          name: "Amplitude",
+          data: waveform.map((p) => p.amplitude || p.amp || 0),
+          color: "#3B82F6",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.8,
+          order: 0,
+          metadata: {
+            unit: "dB",
+            minValue: 0,
+            maxValue: 1,
+            description: "Audio amplitude over time",
+          },
+        },
+        {
+          id: "spectral",
+          type: "spectral",
+          name: "Spectral Features",
+          data: waveform.map((p) => p.spectralCentroid || 0),
+          color: "#10B981",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.8,
+          order: 1,
+          metadata: {
+            unit: "Hz",
+            minValue: 0,
+            maxValue: 1,
+            description: "Spectral centroid (brightness)",
+          },
+        },
+      ];
+
+      // Füge KI-Hotspots hinzu, falls verfügbar
+      if (waveform.some((p) => p.emotionIntensity !== undefined)) {
+        defaultTracks.push({
+          id: "ki-hotspots",
+          type: "ki-hotspots",
+          name: "KI Emotions",
+          data: waveform.map((p) => p.emotionIntensity || 0),
+          color: "#F59E0B",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.9,
+          order: 2,
+          metadata: {
+            unit: "intensity",
+            minValue: 0,
+            maxValue: 1,
+            description: "AI emotion intensity predictions",
+          },
+        });
+      }
+
+      // Füge Struktur-Track hinzu, falls verfügbar
+      if (waveform.some((p) => p.structuralSegment)) {
+        defaultTracks.push({
+          id: "structure",
+          type: "structure",
+          name: "Song Structure",
+          data: waveform.map((p) => {
+            const segment = p.structuralSegment;
+            if (segment === "intro") return 0.1;
+            if (segment === "verse") return 0.3;
+            if (segment === "chorus") return 0.5;
+            if (segment === "bridge") return 0.7;
+            if (segment === "outro") return 0.9;
+            return 0;
+          }),
+          color: "#8B5CF6",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.7,
+          order: 3,
+          metadata: {
+            unit: "segment",
+            minValue: 0,
+            maxValue: 1,
+            description: "Song structure segments",
+          },
+        });
+      }
+
+      // Füge Onset-Track hinzu für Text-Synchronisation
+      if (waveform.some((p) => p.onsetStrength !== undefined)) {
+        defaultTracks.push({
+          id: "onsets",
+          type: "onsets",
+          name: "Musical Onsets",
+          data: waveform.map((p) => p.onsetStrength || 0),
+          color: "#EF4444",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.9,
+          order: 4,
+          metadata: {
+            unit: "strength",
+            minValue: 0,
+            maxValue: 1,
+            description: "Musical onset detection for text synchronization",
+          },
+        });
+      }
+
+      // Füge Vocal-Presence-Track hinzu
+      if (waveform.some((p) => p.vocalProbability !== undefined)) {
+        defaultTracks.push({
+          id: "vocal-presence",
+          type: "custom",
+          name: "Vocal Presence",
+          data: waveform.map((p) => p.vocalProbability || 0),
+          color: "#EC4899",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.8,
+          order: 5,
+          metadata: {
+            unit: "probability",
+            minValue: 0,
+            maxValue: 1,
+            description: "Vocal presence detection for lyrics synchronization",
+          },
+        });
+      }
+
+      // Füge Dynamic-Intensity-Track hinzu
+      if (waveform.some((p) => p.localDynamics !== undefined)) {
+        defaultTracks.push({
+          id: "dynamic-intensity",
+          type: "custom",
+          name: "Dynamic Intensity",
+          data: waveform.map((p) => p.localDynamics || 0),
+          color: "#8B5CF6",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.8,
+          order: 6,
+          metadata: {
+            unit: "intensity",
+            minValue: 0,
+            maxValue: 1,
+            description: "Dynamic intensity changes for emotional analysis",
+          },
+        });
+      }
+
+      // Füge Harmonic-Complexity-Track hinzu
+      if (waveform.some((p) => p.harmonicRichness !== undefined)) {
+        defaultTracks.push({
+          id: "harmonic-complexity",
+          type: "custom",
+          name: "Harmonic Complexity",
+          data: waveform.map((p) => p.harmonicRichness || 0),
+          color: "#06B6D4",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.8,
+          order: 7,
+          metadata: {
+            unit: "complexity",
+            minValue: 0,
+            maxValue: 1,
+            description: "Harmonic complexity for musical structure analysis",
+          },
+        });
+      }
+
+      // Füge Feature-Priority-Track hinzu (Text-Sync-Priorität)
+      if (
+        waveform.some(
+          (p) =>
+            p.onsetStrength !== undefined && p.vocalProbability !== undefined
+        )
+      ) {
+        defaultTracks.push({
+          id: "feature-priority",
+          type: "custom",
+          name: "Text-Sync Priority",
+          data: waveform.map((p) => {
+            // Berechne Text-Sync-Priorität basierend auf Onset + Vocal
+            const onsetPriority = (p.onsetStrength || 0) * 0.6;
+            const vocalPriority = (p.vocalProbability || 0) * 0.4;
+            return Math.min(1.0, onsetPriority + vocalPriority);
+          }),
+          color: "#F97316",
+          height: trackHeight,
+          visible: true,
+          opacity: 0.9,
+          order: 8,
+          metadata: {
+            unit: "priority",
+            minValue: 0,
+            maxValue: 1,
+            description:
+              "Text synchronization priority based on onset + vocal features",
+          },
+        });
+      }
+
+      return defaultTracks;
+    },
+    [trackHeight]
+  );
+
+  // Generiere Tracks aus Waveform, falls keine explizit übergeben wurden
+  const effectiveTracks = useMemo(() => {
+    if (tracks.length > 0) return tracks;
+    if (waveform) return mapAudioFeaturesToTracks(waveform);
+    return [];
+  }, [tracks, waveform, mapAudioFeaturesToTracks]);
+
+  // Aktualisiere Canvas-Höhe basierend auf effektiven Tracks
+  useEffect(() => {
+    const newTotalHeight =
+      effectiveTracks.length > 0
+        ? effectiveTracks.length * trackHeight +
+          (effectiveTracks.length - 1) * trackSpacing
+        : 200;
+
+    if (canvasRef.current) {
+      canvasRef.current.height = newTotalHeight;
+    }
+  }, [effectiveTracks, trackHeight, trackSpacing]);
+
+  // Multi-Track Canvas Rendering
+  const renderMultiTrackCanvas = useCallback(() => {
+    if (!canvasRef.current || effectiveTracks.length === 0) return;
+
+    const ctx = canvasRef.current.getContext("2d");
+    if (!ctx) return;
+
+    const canvasWidth = canvasRef.current.width;
+    const canvasHeight = canvasRef.current.height;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+    // Render background grid
+    if (defaultTrackRenderConfig.showGrid) {
+      renderBackgroundGrid(ctx);
+    }
+
+    // Render each track
+    effectiveTracks.forEach((track, trackIndex) => {
+      if (!track.visible) return;
+
+      const yOffset = trackIndex * (trackHeight + trackSpacing);
+      renderTrack(ctx, track, yOffset, canvasWidth, trackHeight, zoom);
+    });
+
+    // Render markers overlay
+    renderMarkersOverlay(ctx);
+
+    // Render current time indicator
+    renderCurrentTimeIndicator(ctx);
+  }, [
+    effectiveTracks,
+    trackHeight,
+    trackSpacing,
+    zoom,
+    markers,
+    currentTime,
+    defaultTrackRenderConfig.showGrid,
+  ]);
+
+  // Background grid renderer
+  const renderBackgroundGrid = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      const width = canvasRef.current?.width || 0;
+      const height = canvasHeight;
+
+      ctx.strokeStyle = "rgba(75, 85, 99, 0.3)";
+      ctx.lineWidth = 0.5;
+
+      // Vertical time grid (every 10 seconds)
+      const timeStep = 10;
+      const pixelStep = timeStep * zoom;
+
+      for (let x = 0; x < width; x += pixelStep) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+
+      // Horizontal track grid
+      for (let y = 0; y < height; y += trackHeight + trackSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+    },
+    [zoom, trackHeight, trackSpacing, canvasHeight]
+  );
+
+  // Individual track renderer
+  const renderTrack = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      width: number,
+      height: number,
+      zoom: number
+    ) => {
+      if (!track.data || track.data.length === 0) return;
+
+      ctx.save();
+      ctx.globalAlpha = track.opacity;
+
+      // Track background
+      ctx.fillStyle = `${track.color}10`;
+      ctx.fillRect(0, yOffset, width, height);
+
+      // Track border
+      ctx.strokeStyle = `${track.color}30`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, yOffset, width, height);
+
+      // Render track data based on type
+      switch (track.type) {
+        case "amplitude":
+          renderAmplitudeTrack(ctx, track, yOffset, width, height, zoom);
+          break;
+        case "spectral":
+          renderSpectralTrack(ctx, track, yOffset, width, height, zoom);
+          break;
+        case "ki-hotspots":
+          renderEmotionTrack(ctx, track, yOffset, width, height, zoom);
+          break;
+        case "structure":
+          renderStructureTrack(ctx, track, yOffset, width, height, zoom);
+          break;
+        case "onsets":
+          renderOnsetTrack(ctx, track, yOffset, width, height, zoom);
+          break;
+        default:
+          renderGenericTrack(ctx, track, yOffset, width, height, zoom);
+      }
+
+      // Track label
+      if (defaultTrackRenderConfig.showLabels) {
+        renderTrackLabel(ctx, track, yOffset, height);
+      }
+
+      ctx.restore();
+    },
+    [defaultTrackRenderConfig.showLabels]
+  );
+
+  // Track-specific renderers
+  const renderAmplitudeTrack = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      width: number,
+      height: number,
+      zoom: number
+    ) => {
+      const data = track.data as number[];
+      const centerY = yOffset + height / 2;
+
+      ctx.strokeStyle = track.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+
+      data.forEach((value, index) => {
+        const x = (index / data.length) * width;
+        const normalizedValue = Math.max(0, Math.min(1, value));
+        const y = centerY - (normalizedValue * height) / 2;
+
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+
+      ctx.stroke();
+
+      // Fill area
+      if (defaultTrackRenderConfig.fillStyle !== "none") {
+        ctx.lineTo(width, centerY);
+        ctx.lineTo(0, centerY);
+        ctx.closePath();
+
+        const gradient = ctx.createLinearGradient(
+          0,
+          yOffset,
+          0,
+          yOffset + height
+        );
+        gradient.addColorStop(0, `${track.color}40`);
+        gradient.addColorStop(1, `${track.color}10`);
+
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+    },
+    [defaultTrackRenderConfig.fillStyle]
+  );
+
+  const renderSpectralTrack = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      width: number,
+      height: number,
+      zoom: number
+    ) => {
+      const data = track.data as number[];
+
+      data.forEach((value, index) => {
+        const x = (index / data.length) * width;
+        const normalizedValue = Math.max(0, Math.min(1, value));
+        const barHeight = normalizedValue * height;
+        const y = yOffset + height - barHeight;
+
+        // Color based on value
+        const hue = 120 + normalizedValue * 60; // Green to yellow
+        ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+        ctx.fillRect(x, y, Math.max(1, width / data.length), barHeight);
+      });
+    },
+    []
+  );
+
+  const renderEmotionTrack = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      width: number,
+      height: number,
+      zoom: number
+    ) => {
+      const data = track.data as number[];
+
+      data.forEach((value, index) => {
+        const x = (index / data.length) * width;
+        const normalizedValue = Math.max(0, Math.min(1, value));
+        const radius = Math.max(2, normalizedValue * 8);
+        const y = yOffset + height / 2;
+
+        // Color based on intensity
+        const alpha = 0.3 + normalizedValue * 0.7;
+        ctx.fillStyle = `${track.color}${Math.round(alpha * 255)
+          .toString(16)
+          .padStart(2, "0")}`;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+    },
+    []
+  );
+
+  const renderStructureTrack = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      width: number,
+      height: number,
+      zoom: number
+    ) => {
+      const data = track.data as number[];
+
+      data.forEach((value, index) => {
+        const x = (index / data.length) * width;
+        const normalizedValue = Math.max(0, Math.min(1, value));
+        const barHeight = height * 0.6;
+        const y = yOffset + (height - barHeight) / 2;
+
+        // Color based on segment type
+        let color = track.color;
+        if (normalizedValue < 0.2) color = "#EF4444"; // Intro
+        else if (normalizedValue < 0.4) color = "#3B82F6"; // Verse
+        else if (normalizedValue < 0.6) color = "#10B981"; // Chorus
+        else if (normalizedValue < 0.8) color = "#F59E0B"; // Bridge
+        else color = "#8B5CF6"; // Outro
+
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, Math.max(1, width / data.length), barHeight);
+      });
+    },
+    []
+  );
+
+  const renderOnsetTrack = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      width: number,
+      height: number,
+      zoom: number
+    ) => {
+      const data = track.data as number[];
+      const centerY = yOffset + height / 2;
+
+      // Zeichne Onset-Peaks als vertikale Linien
+      data.forEach((value, index) => {
+        if (value > 0.1) {
+          // Nur Onsets über Threshold anzeigen
+          const x = (index / data.length) * width;
+          const normalizedValue = Math.max(0, Math.min(1, value));
+          const peakHeight = height * 0.8 * normalizedValue;
+          const y = centerY - peakHeight / 2;
+
+          // Farbe basierend auf Onset-Stärke
+          const alpha = 0.4 + normalizedValue * 0.6;
+          ctx.strokeStyle = `${track.color}${Math.round(alpha * 255)
+            .toString(16)
+            .padStart(2, "0")}`;
+          ctx.lineWidth = Math.max(1, normalizedValue * 3);
+
+          // Vertikale Linie für Onset
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + peakHeight);
+          ctx.stroke();
+
+          // Kleiner Kreis am Peak
+          if (normalizedValue > 0.5) {
+            ctx.fillStyle = track.color;
+            ctx.beginPath();
+            ctx.arc(x, centerY, 2, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        }
+      });
+
+      // Zeichne Beat-Grid als Hintergrund
+      ctx.strokeStyle = `${track.color}20`;
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([2, 2]);
+
+      // Beat-Linien alle 4 Beats (bei 120 BPM = alle 2 Sekunden)
+      const beatInterval = 2.0; // Sekunden
+      const pixelsPerSecond = width / (duration || 60);
+      const beatSpacing = beatInterval * pixelsPerSecond;
+
+      for (let x = 0; x < width; x += beatSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, yOffset);
+        ctx.lineTo(x, yOffset + height);
+        ctx.stroke();
+      }
+
+      ctx.setLineDash([]); // Reset line dash
+    },
+    [duration]
+  );
+
+  const renderGenericTrack = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      width: number,
+      height: number,
+      zoom: number
+    ) => {
+      const data = track.data as number[];
+      const centerY = yOffset + height / 2;
+
+      ctx.strokeStyle = track.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+
+      data.forEach((value, index) => {
+        const x = (index / data.length) * width;
+        const normalizedValue = Math.max(0, Math.min(1, value));
+        const y = centerY - (normalizedValue * height) / 2;
+
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+
+      ctx.stroke();
+    },
+    []
+  );
+
+  const renderTrackLabel = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      track: TrackData,
+      yOffset: number,
+      height: number
+    ) => {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "12px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+
+      const labelX = 8;
+      const labelY = yOffset + height / 2;
+
+      ctx.fillText(track.name, labelX, labelY);
+    },
+    []
+  );
+
+  const renderMarkersOverlay = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      const height = canvasHeight;
+      markers.forEach((marker) => {
+        const startX = getXFromTime(marker.t_start_s);
+        const endX = getXFromTime(marker.t_end_s);
+        const markerHeight = height * 0.8;
+        const markerY = height * 0.1;
+
+        // Marker background
+        ctx.fillStyle = marker.id === selectedMarkerId ? "#F59E0B" : "#6B7280";
+        ctx.fillRect(startX, markerY, endX - startX, markerHeight);
+
+        // Marker border
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(startX, markerY, endX - startX, markerHeight);
+      });
+    },
+    [getXFromTime, selectedMarkerId, markers, canvasHeight]
+  );
+
+  const renderCurrentTimeIndicator = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      const x = getXFromTime(currentTime);
+      const height = canvasHeight;
+
+      ctx.strokeStyle = "#EF4444";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    },
+    [getXFromTime, currentTime, canvasHeight]
+  );
+
+  // Trigger canvas rendering when dependencies change
+  useEffect(() => {
+    renderMultiTrackCanvas();
+  }, [
+    effectiveTracks.length,
+    trackHeight,
+    trackSpacing,
+    zoom,
+    markers.length,
+    currentTime,
+  ]);
 
   // Marker navigation functions
   const navigateToMarker = useCallback(
@@ -402,18 +1124,45 @@ const Timeline: React.FC<TimelineProps> = ({
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     const time = getMouseEventTime(e);
 
+    if (!containerRef.current) return;
+    const currentY =
+      e.clientY - containerRef.current.getBoundingClientRect().top;
+
+    // Multi-Track Click Logic - Only for explicit track interactions
+    if (effectiveTracks.length > 0) {
+      const trackIndex = Math.floor(currentY / (trackHeight + trackSpacing));
+      const track = effectiveTracks[trackIndex];
+
+      // Only treat as track click if clicking in the middle of a track
+      // Allow timeline scrubbing even when clicking on tracks
+      if (track && track.visible && onTrackClick) {
+        const trackY = trackIndex * (trackHeight + trackSpacing);
+        const clickOffsetY = currentY - trackY;
+
+        // Only treat as track click if clicking in the center area of the track
+        if (
+          clickOffsetY > trackHeight * 0.2 &&
+          clickOffsetY < trackHeight * 0.8
+        ) {
+          onTrackClick(track.id, time, trackIndex);
+          // Don't return - allow both track click AND timeline scrubbing
+        }
+      }
+    }
+
     if (pendingMarkerStart !== null) return;
 
     let clickedOnMarker = false;
     for (const marker of [...markers].reverse()) {
       const startX = getXFromTime(marker.t_start_s);
       const endX = getXFromTime(marker.t_end_s);
-      const x = getXFromTime(time);
+      const mouseX =
+        e.clientX - (containerRef.current?.getBoundingClientRect().left || 0);
       const handleHitboxWidth = 16; // Larger hitbox
 
       if (
-        x >= startX - handleHitboxWidth / 2 &&
-        x <= startX + handleHitboxWidth / 2
+        mouseX >= startX - handleHitboxWidth / 2 &&
+        mouseX <= startX + handleHitboxWidth / 2
       ) {
         interactionState.current = {
           isDragging: true,
@@ -428,8 +1177,8 @@ const Timeline: React.FC<TimelineProps> = ({
         };
         clickedOnMarker = true;
       } else if (
-        x >= endX - handleHitboxWidth / 2 &&
-        x <= endX + handleHitboxWidth / 2
+        mouseX >= endX - handleHitboxWidth / 2 &&
+        mouseX <= endX + handleHitboxWidth / 2
       ) {
         interactionState.current = {
           isDragging: true,
@@ -443,7 +1192,7 @@ const Timeline: React.FC<TimelineProps> = ({
           longPressTimer: null,
         };
         clickedOnMarker = true;
-      } else if (x > startX && x < endX) {
+      } else if (mouseX > startX && mouseX < endX) {
         interactionState.current = {
           isDragging: true,
           draggedMarkerId: marker.id,
@@ -489,6 +1238,25 @@ const Timeline: React.FC<TimelineProps> = ({
     setMouseTime(time);
 
     const currentX = getXFromTime(time);
+    const currentY =
+      e.clientY - containerRef.current.getBoundingClientRect().top;
+
+    // Multi-Track Hover Logic
+    if (effectiveTracks.length > 0) {
+      const trackIndex = Math.floor(currentY / (trackHeight + trackSpacing));
+      const track = effectiveTracks[trackIndex];
+
+      if (track && track.visible) {
+        setHoveredTrackId(track.id);
+
+        // Track-spezifische Hover-Logik
+        if (onTrackHover) {
+          onTrackHover(track.id, time, trackIndex);
+        }
+      } else {
+        setHoveredTrackId(null);
+      }
+    }
 
     // Tooltip & Suggestion Hover Logic
     // BUGFIX: Find the CLOSEST suggestion, not the first one in range.
@@ -533,6 +1301,15 @@ const Timeline: React.FC<TimelineProps> = ({
         break;
       }
     }
+
+    // Set cursor based on track hover
+    if (
+      hoveredTrackId &&
+      effectiveTracks.find((t) => t.id === hoveredTrackId)
+    ) {
+      cursor = "crosshair";
+    }
+
     e.currentTarget.style.cursor = cursor;
     if (newHoveredMarkerId !== hoveredMarkerId) {
       setHoveredMarkerId(newHoveredMarkerId);
@@ -845,6 +1622,23 @@ const Timeline: React.FC<TimelineProps> = ({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
       >
+        {/* Lyrics-Zwischenspeicher Status */}
+        {hasLyricsContext && (
+          <div
+            className="absolute top-2 left-2 z-10 bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-2 cursor-pointer hover:bg-green-500 transition-colors duration-200 active:bg-green-700"
+            onClick={onLyricsStatusClick}
+            title="Klicken um Lyrics anzuzeigen"
+          >
+            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+            <span>Lyrics verfügbar</span>
+            {lyricsContextLength && (
+              <span className="bg-green-700 px-2 py-0.5 rounded text-xs">
+                {lyricsContextLength} Zeichen
+              </span>
+            )}
+          </div>
+        )}
+
         <canvas
           ref={canvasRef}
           style={{
@@ -852,7 +1646,7 @@ const Timeline: React.FC<TimelineProps> = ({
             left: 0,
             top: 0,
             width: "100%",
-            height: "100%",
+            height: `${canvasHeight}px`,
           }}
         />
 

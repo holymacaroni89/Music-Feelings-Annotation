@@ -25,7 +25,12 @@ const GENIUS_API_KEY_DEFAULT =
   "1ogp7eMrwwtgrPOk4PEDLp18cKIZ0RO8PKALdh1u02hL_oA0yaTrzs_VHzOMG0DV";
 
 interface ModalConfig {
-  type: "ADD_PROFILE" | "SEARCH_GENIUS" | "MANUAL_LYRICS" | "API_KEYS";
+  type:
+    | "ADD_PROFILE"
+    | "SEARCH_GENIUS"
+    | "MANUAL_LYRICS"
+    | "API_KEYS"
+    | "LYRICS_PREVIEW";
   title: string;
   submitText: string;
 }
@@ -132,6 +137,18 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     if (!isDirty) return;
     const handler = setTimeout(() => {
       if (trackInfo) {
+        // Hole Audio-Datei-Daten aus localStorage (falls vorhanden)
+        let audioFileData;
+        try {
+          const existingState = localStorage.getItem(AUTOSAVE_KEY);
+          if (existingState) {
+            const parsed = JSON.parse(existingState);
+            audioFileData = parsed.audioFileData;
+          }
+        } catch (e) {
+          console.error("Failed to get existing audio file data:", e);
+        }
+
         const stateToSave: AppState = {
           currentTrackLocalId: trackInfo.localId,
           trackMetadata: {
@@ -142,6 +159,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
               duration_s: trackInfo.duration_s,
             },
           },
+          audioFileData: audioFileData, // Audio-Datei-Daten beibehalten
           markers: markers,
           profiles: profiles,
           activeProfileId: activeProfileId,
