@@ -171,7 +171,6 @@ const App: React.FC = () => {
 
   const handleSelectMarkerAndSeek = useCallback(
     (markerId: string | null) => {
-      console.log("Selecting marker:", markerId); // Debug-Log
       setSelectedMarkerId(markerId);
       // Temporär den scrub-Aufruf entfernen, um das Problem zu beheben
       // if (markerId) {

@@ -58,8 +58,6 @@ const MarkerList: React.FC<MarkerListProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("time");
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  const listRef = useRef<HTMLDivElement>(null);
-  const markerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [filterBy, setFilterBy] = useState<FilterOption>("all");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
@@ -271,13 +269,6 @@ const MarkerList: React.FC<MarkerListProps> = ({
     },
     [filteredAndSortedMarkers, focusedIndex, onSelectMarker, onDeleteMarker]
   );
-
-  // Focus management
-  useEffect(() => {
-    if (focusedIndex >= 0 && markerRefs.current[focusedIndex]) {
-      markerRefs.current[focusedIndex]?.focus();
-    }
-  }, [focusedIndex]);
 
   // Reset focus when markers change
   useEffect(() => {

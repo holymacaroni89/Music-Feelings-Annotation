@@ -83,14 +83,6 @@ export const searchSongs = async (
 
     const data = await response.json();
 
-    // DEBUG: Log the first hit to see what fields are actually available
-    if (data.response.hits.length > 0) {
-      console.log(
-        "DEBUG: First Genius search hit:",
-        JSON.stringify(data.response.hits[0], null, 2)
-      );
-    }
-
     return data.response.hits.map((hit: any) => ({
       id: hit.result.id,
       title: hit.result.title,
@@ -207,9 +199,6 @@ const getLyrics = async (songPageUrl: string): Promise<string | null> => {
       .replace(/\n{4,}/g, "\n\n\n")
       .replace(/^\s+|\s+$/gm, "")
       .trim();
-
-    // DEBUG: Log lyrics after cleaning
-    console.log("DEBUG: Cleaned lyrics:", lyrics.substring(0, 500));
 
     // Final cleanup: collapse multiple newlines
     return lyrics.replace(/\n{3,}/g, "\n\n");
