@@ -172,12 +172,6 @@ const getLyrics = async (songPageUrl: string): Promise<string | null> => {
       // DEBUG: Log lyrics before cleaning for debugging
       .replace(/PLACEHOLDER_FOR_DEBUG/g, ""); // This will be replaced with debug logic
 
-    // DEBUG: Add console logging to see what we're working with
-    console.log(
-      "DEBUG: Raw lyrics before section header cleaning:",
-      lyrics.substring(0, 500)
-    );
-
     // Fix section header formatting with more aggressive approach
     lyrics = lyrics
       // First: Add line breaks after ALL section headers that have text immediately following

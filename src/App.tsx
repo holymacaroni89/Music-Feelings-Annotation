@@ -96,7 +96,6 @@ const App: React.FC = () => {
     const initIndexedDB = async () => {
       try {
         await indexedDBService.init();
-        console.log("✅ [App] IndexedDB erfolgreich initialisiert");
       } catch (error) {
         console.warn(
           "⚠️ [App] IndexedDB nicht verfügbar, verwende Fallback:",
@@ -112,6 +111,7 @@ const App: React.FC = () => {
     audioContext,
     audioBuffer,
     waveform,
+    setWaveform,
     isPlaying,
     currentTime,
     volume,
@@ -161,52 +161,88 @@ const App: React.FC = () => {
     backToGeniusSearch,
   } = useAnnotationSystem(trackInfo);
 
-  // Effect to generate waveform when audio buffer is ready or detail level changes
+  // Effect to restore TrackInfo from IndexedDB when audio buffer is available
   useEffect(() => {
-    if (audioBuffer) {
-      // Prüfe ob dies eine wiederhergestellte Audio-Datei ist
-      if (!trackInfo) {
-        // Versuche TrackInfo aus IndexedDB wiederherzustellen
-        const restoreTrackInfo = async () => {
-          try {
-            const savedState = await indexedDBService.loadAppState();
-            if (savedState?.currentTrackLocalId) {
-              const trackMetadata =
-                savedState.trackMetadata[savedState.currentTrackLocalId];
-              if (trackMetadata) {
-                const restoredTrackInfo: TrackInfo = {
-                  localId: savedState.currentTrackLocalId,
-                  name: trackMetadata.name,
-                  duration_s: audioBuffer.duration,
-                  title: trackMetadata.title,
-                  artist: trackMetadata.artist,
-                };
-                setTrackInfo(restoredTrackInfo);
-                console.log(
-                  "🎵 [App] TrackInfo aus IndexedDB wiederhergestellt für:",
-                  trackMetadata.name
-                );
-              }
+    if (audioBuffer && !trackInfo) {
+      // Versuche TrackInfo aus IndexedDB wiederherzustellen
+      const restoreTrackInfo = async () => {
+        try {
+          const savedState = await indexedDBService.loadAppState();
+          if (savedState?.currentTrackLocalId) {
+            const trackMetadata =
+              savedState.trackMetadata[savedState.currentTrackLocalId];
+            if (trackMetadata) {
+              const restoredTrackInfo: TrackInfo = {
+                localId: savedState.currentTrackLocalId,
+                name: trackMetadata.name,
+                duration_s: audioBuffer.duration,
+                title: trackMetadata.title,
+                artist: trackMetadata.artist,
+              };
+              setTrackInfo(restoredTrackInfo);
             }
-          } catch (error) {
-            console.warn(
-              "⚠️ [App] Fehler beim Wiederherstellen des TrackInfo:",
-              error
-            );
           }
-        };
+        } catch (error) {
+          console.warn(
+            "⚠️ [App] Fehler beim Wiederherstellen des TrackInfo:",
+            error
+          );
+        }
+      };
 
-        restoreTrackInfo();
-      }
+      restoreTrackInfo();
+    }
+  }, [audioBuffer]);
 
-      setIsProcessing(true);
-      setProcessingMessage("Generating audio waveform...");
-      generateWaveform(audioBuffer, waveformDetail).then(() => {
+  // Simplified Waveform Manager - replaces complex useEffect chains
+  const waveformManager = useCallback(
+    async (audioBuffer: AudioBuffer, trackInfo: TrackInfo) => {
+      try {
+        // Check if waveform already exists in IndexedDB
+        const hasCachedWaveform = await indexedDBService.hasWaveform(
+          trackInfo.localId
+        );
+
+        if (hasCachedWaveform) {
+          const cachedWaveform = await indexedDBService.loadWaveform(
+            trackInfo.localId
+          );
+          if (cachedWaveform) {
+            setWaveform(cachedWaveform);
+            return;
+          }
+        }
+
+        // Generate new waveform
+        setIsProcessing(true);
+        setProcessingMessage("Generating audio waveform...");
+
+        // Generate waveform and get the result
+        const newWaveform = await generateWaveform(audioBuffer, waveformDetail);
+
+        if (newWaveform && newWaveform.length > 0) {
+          // Save to IndexedDB
+          await indexedDBService.saveWaveform(trackInfo.localId, newWaveform);
+
+          // Update state (already done by generateWaveform, but ensure it's set)
+          setWaveform(newWaveform);
+        }
+      } catch (error) {
+        console.error("❌ [App] Fehler im Waveform Manager:", error);
+      } finally {
         setIsProcessing(false);
         setProcessingMessage("");
-      });
+      }
+    },
+    [generateWaveform, waveformDetail, setWaveform]
+  );
+
+  // Simple effect to trigger waveform generation when both audioBuffer and trackInfo are available
+  useEffect(() => {
+    if (audioBuffer && trackInfo && !waveform) {
+      waveformManager(audioBuffer, trackInfo);
     }
-  }, [audioBuffer, waveformDetail, generateWaveform, trackInfo]);
+  }, [audioBuffer, trackInfo, waveform, waveformManager]);
 
   // Effect to generate tracks from waveform when available
   useEffect(() => {
@@ -290,59 +326,15 @@ const App: React.FC = () => {
       try {
         const arrayBuffer = await file.arrayBuffer();
 
-        console.log(
-          "🔍 [AUDIO LOAD] Original ArrayBuffer nach file.arrayBuffer():",
-          {
-            byteLength: arrayBuffer.byteLength,
-            isInstanceOfArrayBuffer: arrayBuffer instanceof ArrayBuffer,
-            arrayBufferType: typeof arrayBuffer,
-          }
-        );
-
         // ArrayBuffer kopieren, bevor er detached wird
         const arrayBufferCopy = arrayBuffer.slice(0);
-
-        console.log("🔍 [AUDIO LOAD] Kopierter ArrayBuffer nach slice(0):", {
-          byteLength: arrayBufferCopy.byteLength,
-          isInstanceOfArrayBuffer: arrayBufferCopy instanceof ArrayBuffer,
-          arrayBufferCopyType: typeof arrayBufferCopy,
-          isSameReference: arrayBuffer === arrayBufferCopy,
-        });
-
-        console.log(
-          "🔍 [AUDIO LOAD] Original ArrayBuffer nach slice(0) (sollte unverändert sein):",
-          {
-            byteLength: arrayBuffer.byteLength,
-            isInstanceOfArrayBuffer: arrayBuffer instanceof ArrayBuffer,
-            originalStillValid: arrayBuffer.byteLength > 0,
-          }
-        );
-
-        console.log("🔍 [AUDIO LOAD] Vor decodeAudioData (arrayBufferCopy):", {
-          byteLength: arrayBufferCopy.byteLength,
-          isInstanceOfArrayBuffer: arrayBufferCopy instanceof ArrayBuffer,
-          copyIsValid: arrayBufferCopy.byteLength > 0,
-        });
 
         const decodedBuffer = await audioContext.decodeAudioData(
           arrayBufferCopy
         );
 
-        console.log("🔍 [AUDIO LOAD] Nach decodeAudioData:", {
-          decodedBufferDuration: decodedBuffer.duration,
-          decodedBufferChannels: decodedBuffer.numberOfChannels,
-          decodedBufferSampleRate: decodedBuffer.sampleRate,
-          arrayBufferCopyStillValid: arrayBufferCopy.byteLength > 0,
-          originalArrayBufferStillValid: arrayBuffer.byteLength > 0,
-        });
-
         // ArrayBuffer nach decodeAudioData neu kopieren (da er detached wurde)
         const arrayBufferForStorage = arrayBuffer.slice(0);
-        console.log("🔍 [AUDIO LOAD] Neuer ArrayBuffer für Storage:", {
-          byteLength: arrayBufferForStorage.byteLength,
-          isInstanceOfArrayBuffer: arrayBufferForStorage instanceof ArrayBuffer,
-          isValidForStorage: arrayBufferForStorage.byteLength > 0,
-        });
 
         const localId = `${stringToHash(file.name)}-${file.size}`;
         const { title, artist } = cleanFileName(file.name);
@@ -370,10 +362,6 @@ const App: React.FC = () => {
           };
 
           await indexedDBService.saveAudioFile(audioFileData);
-          console.log(
-            "✅ [IndexedDB] Audio-Datei erfolgreich gespeichert:",
-            file.name
-          );
 
           // App State in IndexedDB speichern (für Wiederherstellung)
           try {
@@ -396,7 +384,6 @@ const App: React.FC = () => {
             };
 
             await indexedDBService.saveAppState(appState);
-            console.log("✅ [IndexedDB] App State erfolgreich gespeichert");
           } catch (stateError) {
             console.warn(
               "⚠️ [IndexedDB] Fehler beim Speichern des App States:",
@@ -420,15 +407,6 @@ const App: React.FC = () => {
             JSON.stringify(fallbackData)
           );
         }
-
-        console.log("🔍 [AUDIO LOAD] Audio-Datei erfolgreich verarbeitet:", {
-          name: file.name,
-          size: file.size,
-          duration: decodedBuffer.duration,
-          channels: decodedBuffer.numberOfChannels,
-          sampleRate: decodedBuffer.sampleRate,
-          arrayBufferSize: arrayBufferForStorage.byteLength,
-        });
 
         setIsDirty(true);
       } catch (err) {

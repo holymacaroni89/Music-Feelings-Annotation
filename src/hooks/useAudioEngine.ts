@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import * as tf from "@tensorflow/tfjs";
 import { WaveformPoint } from "../types";
 import { indexedDBService } from "../services/indexedDBService";
+import { audioCacheService } from "../services/audioCacheService";
 import {
   detectOnsets,
   detectBeatPattern,
@@ -420,7 +421,6 @@ const generateAdvancedWaveformData = async (
       featurePriorities[0],
       { tempo: globalTempo, timePosition: 0 }
     );
-    console.log("🎵 Erste Feature-Analyse:", firstSummary);
   }
 
   // Downsample to the target number of points for visualization
@@ -440,7 +440,11 @@ const generateAdvancedWaveformData = async (
 export const useAudioEngine = () => {
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
-  const [waveform, setWaveform] = useState<WaveformPoint[] | null>(null);
+  const [waveform, _setWaveform] = useState<WaveformPoint[] | null>(null);
+
+  const setWaveform = useCallback((newWaveform: WaveformPoint[] | null) => {
+    _setWaveform(newWaveform);
+  }, []);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -492,9 +496,7 @@ export const useAudioEngine = () => {
         console.warn("AudioContext is suspended, attempting to resume...");
         audioContext
           .resume()
-          .then(() => {
-            console.log("AudioContext resumed successfully");
-          })
+          .then(() => {})
           .catch((e) => {
             console.error("Failed to resume AudioContext:", e);
           });
@@ -578,73 +580,38 @@ export const useAudioEngine = () => {
       // Audio-Datei nach AudioContext-Bereitschaft wiederherstellen
       const restoreAudioFile = async () => {
         try {
-          console.log("🔍 [AUDIO RESTORE] Starte Audio-Wiederherstellung...");
-
           // Versuche zuerst IndexedDB
           try {
             const audioFiles = await indexedDBService.getDatabaseInfo();
-            console.log("🔍 [AUDIO RESTORE] IndexedDB gefunden:", audioFiles);
 
             if (audioFiles.audioFilesCount > 0) {
               // Lade den gespeicherten App State
               const savedState = await indexedDBService.loadAppState();
               if (savedState?.currentTrackLocalId) {
-                console.log(
-                  "✅ [AUDIO RESTORE] IndexedDB State gefunden:",
-                  savedState.currentTrackLocalId
-                );
-
                 // Lade die entsprechende Audio-Datei
                 const trackMetadata =
                   savedState.trackMetadata[savedState.currentTrackLocalId];
                 if (trackMetadata) {
-                  console.log(
-                    "🎵 [AUDIO RESTORE] Lade Audio-Datei:",
-                    trackMetadata.name
-                  );
-
                   try {
                     const audioFile = await indexedDBService.loadAudioFile(
                       trackMetadata.name
                     );
                     if (audioFile && audioFile.arrayBuffer) {
-                      console.log(
-                        "✅ [AUDIO RESTORE] Audio-Datei geladen, dekodiere..."
-                      );
-
                       const decodedBuffer = await context.decodeAudioData(
                         audioFile.arrayBuffer
                       );
-                      console.log(
-                        "✅ [AUDIO RESTORE] Audio erfolgreich dekodiert:",
-                        {
-                          duration: decodedBuffer.duration,
-                          channels: decodedBuffer.numberOfChannels,
-                          sampleRate: decodedBuffer.sampleRate,
-                        }
-                      );
 
                       setAudioBuffer(decodedBuffer);
-                      console.log(
-                        "✅ [AUDIO RESTORE] Audio-Datei erfolgreich wiederhergestellt:",
-                        trackMetadata.name
-                      );
                       return; // Erfolgreich wiederhergestellt
                     }
                   } catch (audioError) {
-                    console.error(
-                      "❌ [AUDIO RESTORE] Fehler beim Laden der Audio-Datei:",
-                      audioError
-                    );
+                    // Audio-Datei konnte nicht geladen werden
                   }
                 }
               }
             }
           } catch (indexedDBError) {
-            console.warn(
-              "⚠️ [AUDIO RESTORE] IndexedDB nicht verfügbar, verwende Fallback:",
-              indexedDBError
-            );
+            // IndexedDB nicht verfügbar, verwende Fallback
 
             // Fallback: localStorage für Metadaten
             const savedStateJSON = localStorage.getItem(
@@ -652,25 +619,11 @@ export const useAudioEngine = () => {
             );
             if (savedStateJSON) {
               const metadata = JSON.parse(savedStateJSON);
-              console.log(
-                "🔍 [AUDIO RESTORE] Fallback-Metadaten gefunden:",
-                metadata
-              );
-              console.log(
-                "⚠️ [AUDIO RESTORE] Audio-Datei kann nicht automatisch wiederhergestellt werden"
-              );
+              // Fallback-Metadaten gefunden, aber Audio kann nicht wiederhergestellt werden
             }
           }
-
-          console.log(
-            "🔍 [AUDIO RESTORE] Keine Audio-Datei gefunden oder Fehler bei der Wiederherstellung"
-          );
         } catch (e) {
-          console.error(
-            "❌ [AUDIO RESTORE] Fehler bei der Wiederherstellung:",
-            e
-          );
-          console.error("❌ [AUDIO RESTORE] Stack Trace:", e.stack);
+          // Fehler bei der Wiederherstellung
         }
       };
 
@@ -686,7 +639,7 @@ export const useAudioEngine = () => {
     // Resetting audio state
     if (isPlaying) stopPlayback();
     setAudioBuffer(null);
-    setWaveform(null);
+    _setWaveform(null);
     setCurrentTime(0);
     playbackOffsetRef.current = 0;
   };
@@ -694,9 +647,7 @@ export const useAudioEngine = () => {
   const initializeAudio = async (decodedBuffer: AudioBuffer) => {
     resetAudio();
     if (audioContext && audioContext.state === "suspended") {
-      console.log("AudioContext suspended, resuming...");
       await audioContext.resume();
-      console.log("AudioContext resumed, new state:", audioContext.state);
     }
     setAudioBuffer(decodedBuffer);
   };
@@ -708,8 +659,9 @@ export const useAudioEngine = () => {
         buffer,
         detail
       );
-      setWaveform(advancedWaveform);
-      // Waveform generated successfully
+      _setWaveform(advancedWaveform);
+      // Return the generated waveform
+      return advancedWaveform;
     },
     []
   );
@@ -744,9 +696,7 @@ export const useAudioEngine = () => {
       console.warn("AudioContext suspended during toggle, resuming...");
       audioContext
         .resume()
-        .then(() => {
-          console.log("AudioContext resumed during toggle");
-        })
+        .then(() => {})
         .catch((e) => {
           console.error("Failed to resume AudioContext during toggle:", e);
         });
@@ -769,10 +719,51 @@ export const useAudioEngine = () => {
     currentTime,
   ]);
 
+  // Neue Funktionen für Audio-Caching
+  const loadCachedAnalysis = useCallback((trackId: string) => {
+    const cached = audioCacheService.getCachedAnalysis(trackId);
+    if (cached && cached.waveform) {
+      console.log(
+        "🎯 [useAudioEngine] Lade gecachte Waveform:",
+        cached.waveform.length,
+        "Punkte"
+      );
+      _setWaveform(cached.waveform);
+      return cached;
+    }
+    return null;
+  }, []);
+
+  const hasCachedAnalysis = useCallback(
+    (trackId: string, waveform: WaveformPoint[], context?: string) => {
+      return audioCacheService.hasCachedAnalysis(trackId, waveform, context);
+    },
+    []
+  );
+
+  const cacheCurrentAnalysis = useCallback(
+    (trackId: string, suggestions: any[], context?: string) => {
+      if (waveform) {
+        audioCacheService.cacheAnalysis(
+          trackId,
+          waveform,
+          suggestions,
+          context
+        );
+        console.log(
+          "🎯 [useAudioEngine] Aktuelle Analyse gecacht für Track:",
+          trackId
+        );
+      }
+    },
+    [waveform]
+  );
+
   return {
     audioContext,
     audioBuffer,
     waveform,
+    setWaveform,
     isPlaying,
     currentTime,
     volume,
@@ -782,5 +773,9 @@ export const useAudioEngine = () => {
     resetAudio,
     scrub,
     togglePlayPause,
+    // Neue Audio-Caching Funktionen
+    loadCachedAnalysis,
+    hasCachedAnalysis,
+    cacheCurrentAnalysis,
   };
 };

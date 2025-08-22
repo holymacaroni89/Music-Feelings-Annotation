@@ -62,6 +62,49 @@ export interface TrackRenderConfig {
   fillStyle: "none" | "solid" | "gradient";
 }
 
+// Neue Typen für emotionale Hotspot-Visualisierung
+export interface EmotionVisualConfig {
+  baseColor: string;
+  intensityGradient: string[];
+  hoverColor: string;
+  selectedColor: string;
+  opacity: number;
+  size: {
+    min: number;
+    max: number;
+    base: number;
+  };
+}
+
+export interface EmotionHotspot {
+  id: string;
+  time: number;
+  dominantEmotion: GEMS;
+  intensity: number;
+  confidence: number;
+  valence: number;
+  arousal: number;
+  source: "ai-suggestion" | "user-annotation";
+  metadata?: {
+    trigger?: Trigger[];
+    imagery?: string;
+    syncNotes?: string;
+  };
+}
+
+export interface EmotionCluster {
+  id: string;
+  centerTime: number;
+  dominantEmotion: GEMS;
+  suggestions: EmotionHotspot[];
+  intensity: number;
+  confidence: number;
+  timeRange: {
+    start: number;
+    end: number;
+  };
+}
+
 export interface Marker {
   id: string; // stable UUID v4
   trackLocalId: string; // z. B. hash des Dateinamens
@@ -162,6 +205,37 @@ export interface TrainingSample {
   };
 }
 
+export interface AudioAnalysisResult {
+  trackId: string;
+  timestamp: number;
+  suggestions: MerSuggestion[];
+  waveformHash: string;
+  songContextHash: string;
+  analysisVersion: string;
+}
+
+// Neue Interface für persistierte Audio-Analyse
+export interface PersistentAudioAnalysis {
+  trackId: string;
+  timestamp: number;
+  suggestions: MerSuggestion[];
+  waveform: WaveformPoint[];
+  waveformHash: string;
+  songContextHash: string;
+  analysisVersion: string;
+  isComplete: boolean;
+  lastLyricsUpdate?: number;
+}
+
+// Interface für Audio-Cache-Status
+export interface AudioCacheStatus {
+  hasAnalysis: boolean;
+  hasWaveform: boolean;
+  lastAnalysis: number;
+  needsReanalysis: boolean;
+  reason?: string;
+}
+
 export interface AppState {
   currentTrackLocalId: string | null;
   trackMetadata: {
@@ -188,6 +262,12 @@ export interface AppState {
   geniusApiKey?: string;
   // AI Context
   songContext: { [trackLocalId: string]: string };
+  // Audio Analysis Cache (erweitert)
+  audioAnalysisCache: { [trackLocalId: string]: AudioAnalysisResult };
+  // Neue persistierte Audio-Analyse
+  persistentAudioAnalysis: { [trackLocalId: string]: PersistentAudioAnalysis };
+  // Audio-Cache-Status für UI
+  audioCacheStatus: { [trackLocalId: string]: AudioCacheStatus };
 }
 
 export interface GeniusHit {

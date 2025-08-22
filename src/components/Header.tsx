@@ -78,8 +78,18 @@ interface HeaderProps {
   trackInfo: TrackInfo | null;
   onEditLyricsClick: () => void;
   onAnalyzeEmotions: () => void;
+  onReAnalyzeEmotions?: () => void;
   canAnalyzeEmotions?: boolean;
   analyzeDisabledReason?: string;
+  hasCachedAnalysis?: boolean;
+  hasCachedWaveform?: boolean;
+  cacheStatus?: {
+    hasAnalysis: boolean;
+    hasWaveform: boolean;
+    lastAnalysis: number;
+    needsReanalysis: boolean;
+    reason?: string;
+  } | null;
   isProcessing: boolean;
   isPlaying: boolean;
   onTogglePlayPause: () => void;
@@ -107,8 +117,12 @@ const Header: React.FC<HeaderProps> = ({
   trackInfo,
   onEditLyricsClick,
   onAnalyzeEmotions,
+  onReAnalyzeEmotions,
   canAnalyzeEmotions = true,
   analyzeDisabledReason,
+  hasCachedAnalysis,
+  hasCachedWaveform,
+  cacheStatus,
   isProcessing,
   isPlaying,
   onTogglePlayPause,
@@ -245,28 +259,71 @@ const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Secondary Action - Analyze with enhanced styling */}
-            <Button
-              onClick={onAnalyzeEmotions}
-              disabled={isProcessing || !canAnalyzeEmotions}
-              variant="secondary"
-              size="lg"
-              className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-accent-600 via-accent-500 to-info-500 hover:from-accent-700 hover:via-accent-600 hover:to-info-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 flex-shrink-0 font-semibold"
-              title={
-                canAnalyzeEmotions
-                  ? "Analyze emotions with AI"
-                  : analyzeDisabledReason || "AI analysis unavailable"
-              }
-            >
-              <SparklesIcon />
-              <span className="hidden sm:inline">Analyze Emotions</span>
-              <span className="sm:hidden">Analyze</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={onAnalyzeEmotions}
+                disabled={isProcessing || !canAnalyzeEmotions}
+                variant="secondary"
+                size="lg"
+                className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-accent-600 via-accent-500 to-info-500 hover:from-accent-700 hover:via-accent-600 hover:to-info-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 flex-shrink-0 font-semibold"
+                title={
+                  canAnalyzeEmotions
+                    ? "Analyze emotions with AI"
+                    : analyzeDisabledReason || "AI analysis unavailable"
+                }
+              >
+                <SparklesIcon />
+                <span className="hidden sm:inline">Analyze Emotions</span>
+                <span className="sm:hidden">Analyze</span>
+              </Button>
+
+              {hasCachedAnalysis && onReAnalyzeEmotions && (
+                <Button
+                  onClick={onReAnalyzeEmotions}
+                  disabled={isProcessing}
+                  variant="outline"
+                  size="lg"
+                  className="flex items-center gap-2 px-4 py-3 border-accent-400 text-accent-400 hover:bg-accent-400 hover:text-white transition-all duration-300 flex-shrink-0"
+                  title="Re-analyze emotions with updated AI model"
+                >
+                  <SparklesIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Re-Analyze</span>
+                  <span className="sm:hidden">Re-Analyze</span>
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
         {/* Bottom Row - Audio Controls & Settings (desktop only, compact layout) */}
         {trackInfo && (
           <div className="hidden lg:flex items-center justify-between gap-4 pt-2 mt-2 border-t border-gray-700">
+            {/* Cache Status Anzeige */}
+            {cacheStatus && (
+              <div className="flex items-center gap-2 text-sm">
+                <div
+                  className={`px-2 py-1 rounded-md text-xs font-medium ${
+                    cacheStatus.hasAnalysis && cacheStatus.hasWaveform
+                      ? "bg-green-100 text-green-800 border border-green-200"
+                      : cacheStatus.hasWaveform
+                      ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+                      : "bg-gray-100 text-gray-800 border border-gray-200"
+                  }`}
+                >
+                  {cacheStatus.hasAnalysis && cacheStatus.hasWaveform
+                    ? "✅ Gecacht"
+                    : cacheStatus.hasWaveform
+                    ? "🔄 Waveform"
+                    : "❌ Kein Cache"}
+                </div>
+                {cacheStatus.lastAnalysis > 0 && (
+                  <span className="text-gray-500">
+                    {new Date(cacheStatus.lastAnalysis).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Audio Controls Group - Left */}
             <div className="flex items-center gap-6">
               {/* Playback Controls */}

@@ -1,5 +1,83 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { WaveformPoint, MerSuggestion, GEMS, Trigger } from "../types";
+import {
+  WaveformPoint,
+  MerSuggestion,
+  GEMS,
+  Trigger,
+  AudioAnalysisResult,
+} from "../types";
+
+// Cache für Audio-Analyse-Ergebnisse
+const audioAnalysisCache = new Map<string, AudioAnalysisResult>();
+
+// Hash-Funktion für Waveform-Daten
+const generateWaveformHash = (waveform: WaveformPoint[]): string => {
+  const data = waveform
+    .map(
+      (p) =>
+        `${p.amp.toFixed(3)}${p.spectralCentroid.toFixed(
+          3
+        )}${p.spectralFlux.toFixed(3)}`
+    )
+    .join("");
+  return btoa(data).slice(0, 16); // Kurzer Hash für Performance
+};
+
+// Hash-Funktion für Song-Context
+const generateContextHash = (context: string): string => {
+  return btoa(context).slice(0, 16);
+};
+
+// Cache-Funktionen
+export const getCachedAnalysis = (
+  trackId: string,
+  waveform: WaveformPoint[],
+  songContext?: string
+): AudioAnalysisResult | null => {
+  const cached = audioAnalysisCache.get(trackId);
+  if (!cached) return null;
+
+  const currentWaveformHash = generateWaveformHash(waveform);
+  const currentContextHash = songContext
+    ? generateContextHash(songContext)
+    : "";
+
+  // Prüfe ob sich Waveform oder Context geändert haben
+  if (
+    cached.waveformHash !== currentWaveformHash ||
+    cached.songContextHash !== currentContextHash
+  ) {
+    return null; // Cache ist veraltet
+  }
+
+  return cached;
+};
+
+export const cacheAnalysisResult = (
+  trackId: string,
+  waveform: WaveformPoint[],
+  songContext: string,
+  suggestions: MerSuggestion[]
+): void => {
+  const result: AudioAnalysisResult = {
+    trackId,
+    timestamp: Date.now(),
+    suggestions,
+    waveformHash: generateWaveformHash(waveform),
+    songContextHash: generateContextHash(songContext),
+    analysisVersion: "1.0",
+  };
+
+  audioAnalysisCache.set(trackId, result);
+};
+
+export const clearAnalysisCache = (trackId?: string): void => {
+  if (trackId) {
+    audioAnalysisCache.delete(trackId);
+  } else {
+    audioAnalysisCache.clear();
+  }
+};
 
 // This function summarizes the detailed waveform data into a more compact text format
 // that is suitable for the LLM's context window.
@@ -144,8 +222,17 @@ const suggestionSchema = {
 export const generateMerSuggestions = async (
   waveform: WaveformPoint[],
   duration: number,
-  songContext?: string
+  songContext?: string,
+  trackId?: string
 ): Promise<MerSuggestion[]> => {
+  // Prüfe Cache zuerst
+  if (trackId) {
+    const cached = getCachedAnalysis(trackId, waveform, songContext);
+    if (cached) {
+      return cached.suggestions;
+    }
+  }
+
   const apiKey = (import.meta as any).env?.VITE_GOOGLE_API_KEY as
     | string
     | undefined;
@@ -340,7 +427,7 @@ For each moment you identify, provide a full annotation:
 
     if (result && Array.isArray(result.suggestions)) {
       // Validate and format the suggestions
-      return result.suggestions
+      const suggestions = result.suggestions
         .map((s: any) => {
           const parsedGems = Object.values(GEMS).includes(s.gems as GEMS)
             ? (s.gems as GEMS)
@@ -367,6 +454,13 @@ For each moment you identify, provide a full annotation:
           };
         })
         .filter((s: MerSuggestion) => s.time <= duration && s.time >= 0);
+
+      // Cache das Ergebnis
+      if (trackId && songContext) {
+        cacheAnalysisResult(trackId, waveform, songContext, suggestions);
+      }
+
+      return suggestions;
     }
 
     return [];

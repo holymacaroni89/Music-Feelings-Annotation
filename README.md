@@ -109,6 +109,21 @@ Für Entwickler stehen folgende Dokumentationsdateien zur Verfügung:
 - **`docs/DEVELOPMENT.md`**: Entwicklungsumgebung und Build-Prozess
 - **`docs/RUNBOOK_WSL.md`**: WSL-spezifische Setup-Anweisungen
 
+## Neueste Änderungen (v0.2.0)
+
+### Waveform-Caching & Performance-Optimierung
+
+- **IndexedDB-Integration**: Waveforms werden jetzt in IndexedDB gespeichert und geladen, um doppelte Generierung zu vermeiden
+- **Vereinfachte Waveform-Logik**: Komplexe useEffect-Ketten durch einfachen Waveform-Manager ersetzt
+- **Automatische Persistierung**: Neue Waveforms werden automatisch gespeichert, gecachte werden direkt geladen
+- **Performance-Verbesserung**: Keine unnötigen Waveform-Neugenerierungen mehr bei Lied-Wechseln
+
+### Code-Bereinigung
+
+- Alle Debug-Logs entfernt für sauberen Produktionscode
+- Vereinfachte State-Verwaltung ohne komplexe Dependency-Ketten
+- Optimierte useEffect-Struktur für bessere Performance
+
 ## Architektur
 
 - **Frontend**: React 19 + TypeScript + Vite

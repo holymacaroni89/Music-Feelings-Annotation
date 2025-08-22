@@ -480,6 +480,112 @@ const Timeline: React.FC<TimelineProps> = ({
     }
   }, [effectiveTracks, trackHeight, trackSpacing]);
 
+  // Neue Hotspot-Rendering-Funktionen für T-002 (vor renderMultiTrackCanvas)
+  // Hilfsfunktion für Hotspot-Größe
+  const getHotspotSize = useCallback(
+    (intensity: number, baseSize: number = 16): number => {
+      const intensityMultiplier = 0.5 + intensity * 0.5;
+      return baseSize * intensityMultiplier;
+    },
+    []
+  );
+
+  const renderEmotionalHotspot = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      emotion: GEMS,
+      intensity: number,
+      confidence: number,
+      size: number
+    ) => {
+      // Import der neuen Konstanten
+      const {
+        EMOTION_VISUAL_CONFIGS,
+        getIntensityColor,
+        getConfidenceAlpha,
+      } = require("../constants");
+
+      const config = EMOTION_VISUAL_CONFIGS[emotion];
+      if (!config) return;
+
+      const alpha = getConfidenceAlpha(confidence);
+      const color = getIntensityColor(config.intensityGradient, intensity);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+
+      // Raute zeichnen (Diamond)
+      const halfSize = size / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - halfSize); // Oben
+      ctx.lineTo(x + halfSize, y); // Rechts
+      ctx.lineTo(x, y + halfSize); // Unten
+      ctx.lineTo(x - halfSize, y); // Links
+      ctx.closePath();
+      ctx.fill();
+
+      // Intensitäts-Ring für hohe Intensität
+      if (intensity > 0.7) {
+        ctx.strokeStyle = config.baseColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Confidence-Indikator (kleiner innerer Ring)
+      if (confidence > 0.8) {
+        ctx.strokeStyle = config.hoverColor;
+        ctx.lineWidth = 1;
+        const innerSize = size * 0.6;
+        const innerHalfSize = innerSize / 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - innerHalfSize);
+        ctx.lineTo(x + innerHalfSize, y);
+        ctx.lineTo(x, y + innerHalfSize);
+        ctx.lineTo(x - innerHalfSize, y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    },
+    []
+  );
+
+  const renderEmotionalHotspots = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      suggestions: MerSuggestion[],
+      zoom: number,
+      canvasHeight: number
+    ) => {
+      if (!suggestions || suggestions.length === 0) return;
+
+      suggestions.forEach((suggestion) => {
+        const x = getXFromTime(suggestion.time);
+        const y = canvasHeight / 2; // Zentriert
+
+        // Bestimme dominante Emotion aus GEMS
+        const dominantEmotion = suggestion.gems || GEMS.JoyfulActivation;
+        const intensity = suggestion.intensity / 100; // Konvertiere 0-100 zu 0-1
+        const confidence = suggestion.confidence || 0.8;
+
+        renderEmotionalHotspot(
+          ctx,
+          x,
+          y,
+          dominantEmotion,
+          intensity,
+          confidence,
+          getHotspotSize(intensity, 16)
+        );
+      });
+    },
+    [renderEmotionalHotspot, getXFromTime, getHotspotSize]
+  );
+
   // Multi-Track Canvas Rendering
   const renderMultiTrackCanvas = useCallback(() => {
     if (!canvasRef.current || effectiveTracks.length === 0) return;
@@ -506,6 +612,11 @@ const Timeline: React.FC<TimelineProps> = ({
       renderTrack(ctx, track, yOffset, canvasWidth, trackHeight, zoom);
     });
 
+    // Render emotional hotspots (T-002)
+    if (suggestions && suggestions.length > 0) {
+      renderEmotionalHotspots(ctx, suggestions, zoom, canvasHeight);
+    }
+
     // Render markers overlay
     renderMarkersOverlay(ctx);
 
@@ -519,6 +630,8 @@ const Timeline: React.FC<TimelineProps> = ({
     markers,
     currentTime,
     defaultTrackRenderConfig.showGrid,
+    suggestions,
+    renderEmotionalHotspots,
   ]);
 
   // Background grid renderer
@@ -914,6 +1027,7 @@ const Timeline: React.FC<TimelineProps> = ({
     zoom,
     markers.length,
     currentTime,
+    renderMultiTrackCanvas,
   ]);
 
   // Marker navigation functions
@@ -1106,7 +1220,7 @@ const Timeline: React.FC<TimelineProps> = ({
 
   useEffect(() => {
     draw();
-  }, [draw]);
+  }, [draw, waveform]); // Waveform als Dependency hinzugefügt
 
   const getMouseEventTime = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

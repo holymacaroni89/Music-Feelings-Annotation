@@ -4,7 +4,7 @@
 
 ---
 
-## **📋 Aktueller Stand (Q1 2024) ✅ ABGESCHLOSSEN**
+## **📋 Aktueller Stand (v0.2.0 - Dezember 2024) ✅ ABGESCHLOSSEN**
 
 ### **Phase 1: MVP & Grundlagen**
 
@@ -26,18 +26,19 @@
 
 ---
 
-## **🎯 Phase 2: Forschungsvalidierung & App-Verbesserung (Q2 2024)**
+## **🎯 Phase 2: Forschungsvalidierung & App-Verbesserung (Q4 2024 - AKTUELL)**
 
 ### **2.1 Erweiterte Visualisierungen (Priorität: HOCH)**
 
 #### **Task 2.1.1: Timeline-Visualisierung verbessern**
 
-- [ ] **T-001**: Mehrspurige Timeline implementieren
+- [x] **T-001**: Mehrspurige Timeline implementieren ✅
 
   - **Beschreibung**: Separate Spuren für Amplitude, Spectral Features, KI-Hotspots
   - **Aufwand**: 3-4 Tage
   - **Abhängigkeiten**: Timeline.tsx refactoren
   - **Akzeptanzkriterien**: 3 Spuren sichtbar, Performance < 100ms
+  - **Status**: ✅ ABGESCHLOSSEN - Mehrspurige Timeline mit 5 Tracks implementiert
 
 - [ ] **T-002**: Emotionale Hotspot-Visualisierung
 
@@ -85,11 +86,12 @@
   - **Abhängigkeiten**: Vite Worker-Konfiguration
   - **Akzeptanzkriterien**: UI bleibt responsiv während Verarbeitung
 
-- [ ] **T-008**: Audio-Caching implementieren
+- [x] **T-008**: Audio-Caching implementieren ✅
   - **Beschreibung**: Dekodierte Audio-Daten zwischenspeichern
   - **Aufwand**: 2-3 Tage
   - **Abhängigkeiten**: IndexedDB Integration
   - **Akzeptanzkriterien**: Zweiter Laden < 1s
+  - **Status**: ✅ ABGESCHLOSSEN - IndexedDB-basiertes Waveform-Caching implementiert
 
 #### **Task 2.2.2: Rendering-Performance**
 
@@ -148,7 +150,7 @@
          - **Aufwand**: 2-3 Tage
          - **Abhängigkeiten**: useAudioEngine Hook
          - **Akzeptanzkriterien**: Onset-Strength, Beat-Confidence, Phrase-Boundary Features verfügbar
-         - **Status**: Implementiert - Onset-Detection-Algorithmus, Integration in Audio-Engine, neuer Onset-Track in Timeline
+         - **Status**: ✅ ABGESCHLOSSEN - Onset-Detection-Algorithmus, Integration in Audio-Engine, neuer Onset-Track in Timeline
 
 - [x] **T-019**: Erweiterte Audio-Features hinzufügen ✅
 
@@ -156,7 +158,7 @@
          - **Aufwand**: 1-2 Tage
          - **Abhängigkeiten**: T-018
          - **Akzeptanzkriterien**: Vocal-Presence, Dynamic-Intensity, Harmonic-Complexity Features
-         - **Status**: Implementiert - Vocal-Presence-Detection, Dynamic-Intensity-Analyse, Harmonic-Complexity-Analyse, neue Tracks in Timeline
+         - **Status**: ✅ ABGESCHLOSSEN - Vocal-Presence-Detection, Dynamic-Intensity-Analyse, Harmonic-Complexity-Analyse, neue Tracks in Timeline
 
 - [x] **T-020**: Audio-Feature-Integration ✅
 
@@ -164,7 +166,7 @@
   - **Aufwand**: 1 Tag
   - **Abhängigkeiten**: T-019
   - **Akzeptanzkriterien**: Alle Features werden in Waveform-Daten gespeichert
-  - **Status**: Implementiert - Feature-Normalisierung, -Priorisierung, Performance-Optimierung, neuer Text-Sync-Priority-Track
+  - **Status**: ✅ ABGESCHLOSSEN - Feature-Normalisierung, -Priorisierung, Performance-Optimierung, neuer Text-Sync-Priority-Track
 
 #### **Task 2.4.2: Intelligente Prompt-Engineering**
 
@@ -239,20 +241,20 @@
 
 ---
 
-## **🚀 Phase 3: Advanced Features & Therapeutische Anwendung (Q3 2024)**
+## **🚀 Phase 3: Advanced Features & Therapeutische Anwendung (Q1 2025)**
 
 ### **3.1 Genius-Integration (Priorität: HOCH)**
 
 #### **Task 3.1.1: Erweiterte Song-Kontext-Features**
 
-- [ ] **T-018**: Lyrics-Integration verbessern
+- [ ] **T-030**: Lyrics-Integration verbessern
 
   - **Beschreibung**: Zeilenweise Annotationen mit Referents
   - **Aufwand**: 5-6 Tage
   - **Abhängigkeiten**: geniusService.ts
   - **Akzeptanzkriterien**: Alle Lyrics mit Community-Anmerkungen
 
-- [ ] **T-019**: Song-Metadaten-Erweiterung
+- [ ] **T-031**: Song-Metadaten-Erweiterung
   - **Beschreibung**: Album, Release-Date, Genre-Informationen
   - **Aufwand**: 3-4 Tage
   - **Abhängigkeiten**: Genius API
@@ -260,7 +262,7 @@
 
 #### **Task 3.1.2: KI-Kontext-Optimierung**
 
-- [ ] **T-020**: Kontext-basierte Prompt-Optimierung
+- [ ] **T-032**: Kontext-basierte Prompt-Optimierung
   - **Beschreibung**: Dynamische Prompts basierend auf Song-Kontext
   - **Aufwand**: 4-5 Tage
   - **Abhängigkeiten**: geminiService.ts
@@ -270,21 +272,21 @@
 
 #### **Task 3.2.1: Audio-Feature-Engineering**
 
-- [ ] **T-021**: Harmonic/Percussive Separation
+- [ ] **T-033**: Harmonic/Percussive Separation
 
   - **Beschreibung**: Trennung melodischer und rhythmischer Elemente
   - **Aufwand**: 6-7 Tage
   - **Abhängigkeiten**: Web Audio API erweitern
   - **Akzeptanzkriterien**: 80% Genauigkeit bei der Trennung
 
-- [ ] **T-022**: Chroma Features implementieren
+- [ ] **T-034**: Chroma Features implementieren
 
   - **Beschreibung**: Tonart- und Akkord-Erkennung
   - **Aufwand**: 5-6 Tage
   - **Abhängigkeiten**: FFT-Analyse
   - **Akzeptanzkriterien**: 70% Genauigkeit bei Tonart-Erkennung
 
-- [ ] **T-023**: Onset Detection
+- [ ] **T-035**: Onset Detection
   - **Beschreibung**: Erkennung struktureller Momente
   - **Aufwand**: 4-5 Tage
   - **Abhängigkeiten**: Signal-Processing
@@ -292,14 +294,14 @@
 
 #### **Task 3.2.2: Personalisierung erweitern**
 
-- [ ] **T-024**: Negative Samples sammeln
+- [ ] **T-036**: Negative Samples sammeln
 
   - **Beschreibung**: Abgelehnte KI-Vorschläge für Training nutzen
   - **Aufwand**: 3-4 Tage
   - **Abhängigkeiten**: ML-Service
   - **Akzeptanzkriterien**: 20% bessere Personalisierung
 
-- [ ] **T-025**: Mehrdimensionale Personalisierung
+- [ ] **T-037**: Mehrdimensionale Personalisierung
   - **Beschreibung**: Intensity/Confidence/GEMS personalisieren
   - **Aufwand**: 5-6 Tage
   - **Abhängigkeiten**: TensorFlow.js Modelle
@@ -309,14 +311,14 @@
 
 #### **Task 3.3.1: Therapeuten-Dashboard**
 
-- [ ] **T-026**: Fortschritts-Tracking implementieren
+- [ ] **T-038**: Fortschritts-Tracking implementieren
 
   - **Beschreibung**: Individuelle Entwicklungsverläufe
   - **Aufwand**: 4-5 Tage
   - **Abhängigkeiten**: Datenbank-Schema
   - **Akzeptanzkriterien**: Alle Metriken werden getrackt
 
-- [ ] **T-027**: Erfolgsmetriken für Gefühlsregulation
+- [ ] **T-039**: Erfolgsmetriken für Gefühlsregulation
   - **Beschreibung**: Quantifizierung der Verbesserungen
   - **Aufwand**: 3-4 Tage
   - **Abhängigkeiten**: Analytics-Service
@@ -324,14 +326,14 @@
 
 #### **Task 3.3.2: Kindgerechte Visualisierungen**
 
-- [ ] **T-028**: Einfache Farb- und Formsprache
+- [ ] **T-040**: Einfache Farb- und Formsprache
 
   - **Beschreibung**: Intuitive Darstellung von Emotionen
   - **Aufwand**: 4-5 Tage
   - **Abhängigkeiten**: Design-System
   - **Akzeptanzkriterien**: 90% der Kinder verstehen die Visualisierungen
 
-- [ ] **T-029**: Emotionale "Landkarten" der Musik
+- [ ] **T-041**: Emotionale "Landkarten" der Musik
   - **Beschreibung**: Spielerische Darstellung emotionaler Reisen
   - **Aufwand**: 5-6 Tage
   - **Abhängigkeiten**: Canvas-Animationen
@@ -339,61 +341,61 @@
 
 ---
 
-## **🔬 Phase 4: Forschungsabschluss & Produktionsreife (Q4 2024)**
+## **🔬 Phase 4: Forschungsabschluss & Produktionsreife (Q2 2025)**
 
 ### **4.1 Vollständige Studien (Priorität: HOCH)**
 
 #### **Task 4.1.1: Pilotstudien durchführen**
 
-- [ ] **T-030**: Ethik-Kommission-Antrag vorbereiten
+- [ ] **T-042**: Ethik-Kommission-Antrag vorbereiten
 
   - **Beschreibung**: Vollständiger Antrag für Studien mit Kindern
   - **Aufwand**: 2-3 Wochen
   - **Abhängigkeiten**: Forschungsprotokoll
   - **Akzeptanzkriterien**: Genehmigung der Ethik-Kommission
 
-- [ ] **T-031**: Rekrutierung von Studienteilnehmern
+- [ ] **T-043**: Rekrutierung von Studienteilnehmern
 
   - **Beschreibung**: 20 neurodivergente Kinder für Pilotstudie
   - **Aufwand**: 4-6 Wochen
   - **Abhängigkeiten**: Kooperationen mit Therapiezentren
   - **Akzeptanzkriterien**: 20 Kinder rekrutiert
 
-- [ ] **T-032**: Pilotstudie durchführen
+- [ ] **T-044**: Pilotstudie durchführen
   - **Beschreibung**: 8-wöchige Studie mit wöchentlichen Sitzungen
   - **Aufwand**: 8 Wochen
-  - **Abhängigkeiten**: T-030, T-031
+  - **Abhängigkeiten**: T-042, T-043
   - **Akzeptanzkriterien**: Vollständige Datensammlung
 
 ### **4.2 Wissenschaftliche Publikationen (Priorität: MITTEL)**
 
 #### **Task 4.2.1: Forschungsberichte erstellen**
 
-- [ ] **T-033**: Methoden-Paper schreiben
+- [ ] **T-045**: Methoden-Paper schreiben
 
   - **Beschreibung**: Technische Implementierung und Validierung
   - **Aufwand**: 3-4 Wochen
-  - **Abhängigkeiten**: T-032
+  - **Abhängigkeiten**: T-044
   - **Akzeptanzkriterien**: Submission-ready Paper
 
-- [ ] **T-034**: Ergebnisse-Paper schreiben
+- [ ] **T-046**: Ergebnisse-Paper schreiben
   - **Beschreibung**: Therapeutische Wirksamkeit und KI-Performance
   - **Aufwand**: 4-5 Wochen
-  - **Abhängigkeiten**: T-032
+  - **Abhängigkeiten**: T-044
   - **Akzeptanzkriterien**: Submission-ready Paper
 
 ### **4.3 Performance-Tuning & Security (Priorität: MITTEL)**
 
 #### **Task 4.3.1: Finale Optimierungen**
 
-- [ ] **T-035**: Performance-Audit durchführen
+- [ ] **T-047**: Performance-Audit durchführen
 
   - **Beschreibung**: Lighthouse-Scores, Bundle-Analyse
   - **Aufwand**: 2-3 Tage
   - **Abhängigkeiten**: Alle Features implementiert
   - **Akzeptanzkriterien**: Lighthouse Score > 90
 
-- [ ] **T-036**: Security-Audit
+- [ ] **T-048**: Security-Audit
   - **Beschreibung**: Datenschutz, API-Sicherheit
   - **Aufwand**: 3-4 Tage
   - **Abhängigkeiten**: Externe Security-Experten
@@ -426,31 +428,31 @@
 
 ---
 
-## **🎯 Nächste Schritte (Sofort)**
+## **🎯 Nächste Schritte (Priorität 1 - Diese Woche)**
 
 ### **Diese Woche (Priorität 1)**
 
-1. **T-001**: Mehrspurige Timeline implementieren
+1. **T-002**: Emotionale Hotspot-Visualisierung
 2. **T-006**: Lazy Loading für große Audiodateien
 3. **T-011**: Touch-Gesten für Timeline
 
 ### **Nächste 2 Wochen (Priorität 2)**
 
-1. **T-002**: Emotionale Hotspot-Visualisierung
+1. **T-003**: Mini-Spektrogramm hinzufügen
 2. **T-007**: Web Workers für Audio-Analyse
 3. **T-012**: Mobile Header optimieren
 
 ### **Nächster Monat (Priorität 3)**
 
-1. **T-018**: Onset Detection implementieren (KI-Vorhersagen)
-2. **T-019**: Erweiterte Audio-Features hinzufügen
-3. **T-020**: Audio-Feature-Integration
-
-### **Übernächster Monat (Priorität 4)**
-
 1. **T-021**: Musiktheorie-Prompts entwickeln
 2. **T-022**: Audio-Feature-Integration in Prompts
 3. **T-023**: Prompt-Performance optimieren
+
+### **Übernächster Monat (Priorität 4)**
+
+1. **T-004**: Segmentierung-Erkennung
+2. **T-005**: Vertikale Struktur-Marker
+3. **T-009**: Canvas-Optimierung für Timeline
 
 ---
 
@@ -498,4 +500,4 @@
 
 ---
 
-**Nächster Schritt**: Task T-001 (Mehrspurige Timeline) implementieren und dabei die Performance-Metriken kontinuierlich überwachen.
+**Nächster Schritt**: Task T-002 (Emotionale Hotspot-Visualisierung) implementieren und dabei die Performance-Metriken kontinuierlich überwachen.

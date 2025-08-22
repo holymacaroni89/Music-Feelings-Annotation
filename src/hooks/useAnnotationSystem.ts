@@ -16,6 +16,7 @@ import { AUTOSAVE_KEY, MARKER_DEFAULT_DURATION_S } from "../constants";
 import * as trainingService from "../services/trainingService";
 import * as mlService from "../services/mlService";
 import * as geminiService from "../services/geminiService";
+import { clearAnalysisCache } from "../services/geminiService";
 import * as geniusService from "../services/geniusService";
 
 const MIN_TRAINING_SAMPLES = 10;
@@ -222,14 +223,19 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     }
   }, [activeProfileId]);
 
-  const analyzeEmotions = async (waveform: any, duration: number) => {
+  const analyzeEmotions = async (
+    waveform: any,
+    duration: number,
+    trackId?: string
+  ) => {
     const currentContext = trackInfo
       ? songContext[trackInfo.localId]
       : undefined;
     const baseSuggestions = await geminiService.generateMerSuggestions(
       waveform,
       duration,
-      currentContext
+      currentContext,
+      trackId
     );
     if (personalModel) {
       const refinedSuggestions = mlService.predict(

@@ -8,6 +8,13 @@ interface AudioFileData {
   sampleRate: number;
 }
 
+interface WaveformData {
+  trackId: string;
+  waveform: any[];
+  timestamp: number;
+  version: string;
+}
+
 interface AppState {
   currentTrackLocalId: string | null;
   trackMetadata: { [key: string]: any };
@@ -19,8 +26,8 @@ interface AppState {
 }
 
 class IndexedDBService {
-  private dbName = "music-emotion-annotation";
-  private version = 1;
+  private dbName = "music-emotion-annotation-v2";
+  private version = 2; // Version erhöht für neuen waveforms Store
   private db: IDBDatabase | null = null;
 
   async init(): Promise<void> {
@@ -37,7 +44,7 @@ class IndexedDBService {
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log("✅ [IndexedDB] Datenbank erfolgreich geöffnet");
+
         resolve();
       };
 
@@ -52,7 +59,6 @@ class IndexedDBService {
           audioStore.createIndex("lastModified", "lastModified", {
             unique: false,
           });
-          console.log("✅ [IndexedDB] Audio Files Store erstellt");
         }
 
         // App State Store
@@ -60,7 +66,16 @@ class IndexedDBService {
           const stateStore = db.createObjectStore("appState", {
             keyPath: "id",
           });
-          console.log("✅ [IndexedDB] App State Store erstellt");
+        }
+
+        // Waveform Store
+        if (!db.objectStoreNames.contains("waveforms")) {
+          const waveformStore = db.createObjectStore("waveforms", {
+            keyPath: "trackId",
+          });
+          waveformStore.createIndex("timestamp", "timestamp", {
+            unique: false,
+          });
         }
       };
     });
@@ -78,7 +93,6 @@ class IndexedDBService {
       const request = store.put(audioData);
 
       request.onsuccess = () => {
-        console.log("✅ [IndexedDB] Audio-Datei gespeichert:", audioData.name);
         resolve();
       };
 
@@ -105,10 +119,8 @@ class IndexedDBService {
 
       request.onsuccess = () => {
         if (request.result) {
-          console.log("✅ [IndexedDB] Audio-Datei geladen:", fileName);
           resolve(request.result);
         } else {
-          console.log("🔍 [IndexedDB] Audio-Datei nicht gefunden:", fileName);
           resolve(null);
         }
       };
@@ -135,7 +147,6 @@ class IndexedDBService {
       const request = store.put({ id: "main", ...state });
 
       request.onsuccess = () => {
-        console.log("✅ [IndexedDB] App State gespeichert");
         resolve();
       };
 
@@ -162,11 +173,9 @@ class IndexedDBService {
 
       request.onsuccess = () => {
         if (request.result) {
-          console.log("✅ [IndexedDB] App State geladen");
           const { id, ...state } = request.result;
           resolve(state);
         } else {
-          console.log("🔍 [IndexedDB] App State nicht gefunden");
           resolve(null);
         }
       };
@@ -193,13 +202,102 @@ class IndexedDBService {
       const request = store.clear();
 
       request.onsuccess = () => {
-        console.log("✅ [IndexedDB] Alle Audio-Dateien gelöscht");
         resolve();
       };
 
       request.onerror = () => {
         console.error(
           "❌ [IndexedDB] Fehler beim Löschen der Audio-Dateien:",
+          request.error
+        );
+        reject(request.error);
+      };
+    });
+  }
+
+  // Waveform-Persistierung
+  async saveWaveform(trackId: string, waveform: any[]): Promise<void> {
+    if (!this.db) {
+      throw new Error("IndexedDB nicht initialisiert");
+    }
+
+    const waveformData: WaveformData = {
+      trackId,
+      waveform,
+      timestamp: Date.now(),
+      version: "1.0",
+    };
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["waveforms"], "readwrite");
+      const store = transaction.objectStore("waveforms");
+
+      const request = store.put(waveformData);
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      request.onerror = () => {
+        console.error(
+          "❌ [IndexedDB] Fehler beim Speichern der Waveform:",
+          request.error
+        );
+        reject(request.error);
+      };
+    });
+  }
+
+  async loadWaveform(trackId: string): Promise<any[] | null> {
+    if (!this.db) {
+      throw new Error("IndexedDB nicht initialisiert");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["waveforms"], "readonly");
+      const store = transaction.objectStore("waveforms");
+
+      const request = store.get(trackId);
+
+      request.onsuccess = () => {
+        const waveformData = request.result;
+        if (waveformData) {
+          resolve(waveformData.waveform);
+        } else {
+          resolve(null);
+        }
+      };
+
+      request.onerror = () => {
+        console.error(
+          "❌ [IndexedDB] Fehler beim Laden der Waveform:",
+          request.error
+        );
+        reject(request.error);
+      };
+    });
+  }
+
+  async hasWaveform(trackId: string): Promise<boolean> {
+    if (!this.db) {
+      throw new Error("IndexedDB nicht initialisiert");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["waveforms"], "readonly");
+      const store = transaction.objectStore("waveforms");
+
+      const request = store.count(trackId);
+
+      request.onsuccess = () => {
+        const hasWaveform = request.result > 0;
+
+        resolve(hasWaveform);
+      };
+
+      request.onerror = () => {
+        console.error(
+          "❌ [IndexedDB] Fehler beim Waveform-Check:",
           request.error
         );
         reject(request.error);
@@ -253,7 +351,6 @@ export const fallbackStorage = {
         "music-emotion-annotation-state",
         JSON.stringify(state)
       );
-      console.log("✅ [Fallback] App State in localStorage gespeichert");
     } catch (e) {
       console.error("❌ [Fallback] Fehler beim Speichern in localStorage:", e);
     }
@@ -263,7 +360,6 @@ export const fallbackStorage = {
     try {
       const saved = localStorage.getItem("music-emotion-annotation-state");
       if (saved) {
-        console.log("✅ [Fallback] App State aus localStorage geladen");
         return JSON.parse(saved);
       }
     } catch (e) {
