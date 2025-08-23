@@ -18,6 +18,7 @@ import * as mlService from "../services/mlService";
 import * as geminiService from "../services/geminiService";
 import { clearAnalysisCache } from "../services/geminiService";
 import * as geniusService from "../services/geniusService";
+import { indexedDBService } from "../services/indexedDBService";
 
 const MIN_TRAINING_SAMPLES = 10;
 
@@ -117,17 +118,33 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
 
   useEffect(() => {
     if (trackInfo) {
-      const savedStateJSON = localStorage.getItem(AUTOSAVE_KEY);
-      if (savedStateJSON) {
-        const savedState: AppState = JSON.parse(savedStateJSON);
-        if (savedState.currentTrackLocalId === trackInfo.localId) {
-          setMarkers(savedState.markers);
-        } else {
-          // New track, reset everything
-          setMarkers([]);
-          setMerSuggestions([]);
+      // Lade Marker aus IndexedDB statt localStorage
+      const loadMarkersFromDB = async () => {
+        try {
+          const appState = await indexedDBService.loadAppState();
+          if (appState && appState.currentTrackLocalId === trackInfo.localId) {
+            setMarkers(appState.markers || []);
+          } else {
+            setMarkers([]);
+            setMerSuggestions([]);
+          }
+        } catch (error) {
+          console.warn(
+            "⚠️ [useAnnotationSystem] Fehler beim Laden der Marker aus IndexedDB:",
+            error
+          );
+          // Fallback: Verwende localStorage
+          const savedStateJSON = localStorage.getItem(AUTOSAVE_KEY);
+          if (savedStateJSON) {
+            const savedState: AppState = JSON.parse(savedStateJSON);
+            if (savedState.currentTrackLocalId === trackInfo.localId) {
+              setMarkers(savedState.markers || []);
+            }
+          }
         }
-      }
+      };
+
+      loadMarkersFromDB();
     } else {
       setMarkers([]);
       setMerSuggestions([]);
@@ -161,7 +178,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
             },
           },
           audioFileData: audioFileData, // Audio-Datei-Daten beibehalten
-          markers: markers,
+          // markers: markers, // Marker werden jetzt in IndexedDB gespeichert
           profiles: profiles,
           activeProfileId: activeProfileId,
           geniusApiKey: geniusApiKey,
@@ -231,12 +248,14 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     const currentContext = trackInfo
       ? songContext[trackInfo.localId]
       : undefined;
+
     const baseSuggestions = await geminiService.generateMerSuggestions(
       waveform,
       duration,
       currentContext,
       trackId
     );
+
     if (personalModel) {
       const refinedSuggestions = mlService.predict(
         personalModel,
@@ -334,37 +353,109 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     }
   };
 
-  const handleSuggestionClick = (suggestion: MerSuggestion) => {
-    if (!trackInfo) return;
-    const newMarker: Marker = {
-      id: crypto.randomUUID(),
-      trackLocalId: trackInfo.localId,
-      title: trackInfo.title,
-      artist: trackInfo.artist,
-      duration_s: trackInfo.duration_s,
-      t_start_s: suggestion.time,
-      t_end_s: Math.min(suggestion.time + 10.0, trackInfo.duration_s),
-      valence: parseFloat(suggestion.valence.toFixed(2)),
-      arousal: parseFloat(suggestion.arousal.toFixed(2)),
-      intensity: suggestion.intensity,
-      confidence: parseFloat(suggestion.confidence.toFixed(2)),
-      gems: suggestion.gems,
-      trigger: suggestion.trigger,
-      imagery: suggestion.imagery,
-      sync_notes: suggestion.sync_notes,
-    };
+  const handleSuggestionClick = useCallback(
+    async (suggestion: MerSuggestion) => {
+      if (!trackInfo) return;
+      const newMarker: Marker = {
+        id: crypto.randomUUID(),
+        trackLocalId: trackInfo.localId,
+        title: trackInfo.title,
+        artist: trackInfo.artist,
+        duration_s: trackInfo.duration_s,
+        t_start_s: suggestion.time,
+        t_end_s: Math.min(suggestion.time + 10.0, trackInfo.duration_s),
+        valence: parseFloat(suggestion.valence.toFixed(2)),
+        arousal: parseFloat(suggestion.arousal.toFixed(2)),
+        intensity: suggestion.intensity,
+        confidence: parseFloat(suggestion.confidence.toFixed(2)),
+        gems: suggestion.gems,
+        trigger: suggestion.trigger,
+        imagery: suggestion.imagery,
+        sync_notes: suggestion.sync_notes,
+      };
 
-    const newMarkers = [...markers, newMarker].sort(
-      (a, b) => a.t_start_s - b.t_start_s
-    );
-    setMarkers(newMarkers);
-    setSelectedMarkerId(newMarker.id);
-    setIsDirty(true);
-    captureTrainingSample(
-      { valence: newMarker.valence, arousal: newMarker.arousal },
-      newMarker.t_start_s
-    );
-  };
+      const newMarkers = [...markers, newMarker].sort(
+        (a, b) => a.t_start_s - b.t_start_s
+      );
+      setMarkers(newMarkers);
+      setSelectedMarkerId(newMarker.id);
+      setIsDirty(true);
+      captureTrainingSample(
+        { valence: newMarker.valence, arousal: newMarker.arousal },
+        newMarker.t_start_s
+      );
+
+      // Save the suggestion to IndexedDB
+      try {
+        await indexedDBService.saveSuggestions(trackInfo.localId, [suggestion]);
+      } catch (e) {
+        console.error("Failed to save suggestion to IndexedDB:", e);
+      }
+
+      // 🆕 WICHTIG: Speichere den neuen Marker auch in der IndexedDB!
+      try {
+        const currentAppState = await indexedDBService.loadAppState();
+        if (currentAppState) {
+          console.log(
+            "🔄 [Hotspot] Aktueller AppState geladen, Marker:",
+            currentAppState.markers?.length || 0
+          );
+          // Aktualisiere die Marker im App State
+          const updatedAppState: AppState = {
+            ...currentAppState,
+            markers: newMarkers, // Verwende die neuen Marker
+          };
+          console.log(
+            "🔄 [Hotspot] Speichere aktualisierten AppState mit",
+            newMarkers.length,
+            "Markern..."
+          );
+          await indexedDBService.saveAppState(updatedAppState);
+          console.log(
+            "✅ [Hotspot] Neuer Marker in IndexedDB gespeichert:",
+            newMarker.id
+          );
+        } else {
+          console.log("⚠️ [Hotspot] Kein AppState gefunden, erstelle neuen...");
+          // Erstelle neuen AppState falls keiner existiert
+          const newAppState: AppState = {
+            currentTrackLocalId: trackInfo.localId,
+            trackMetadata: {
+              [trackInfo.localId]: {
+                name: trackInfo.name,
+                title: trackInfo.title,
+                artist: trackInfo.artist,
+                duration_s: trackInfo.duration_s,
+              },
+            },
+            markers: newMarkers,
+            profiles: profiles,
+            activeProfileId: activeProfileId,
+            geniusApiKey: geniusApiKey,
+            songContext: songContext,
+          };
+          await indexedDBService.saveAppState(newAppState);
+          console.log(
+            "✅ [Hotspot] Neuer AppState mit Marker erstellt:",
+            newMarker.id
+          );
+        }
+      } catch (e) {
+        console.error(
+          "❌ [Hotspot] Fehler beim Speichern des Markers in IndexedDB:",
+          e
+        );
+      }
+    },
+    [
+      markers,
+      trackInfo,
+      setMarkers,
+      setSelectedMarkerId,
+      setIsDirty,
+      captureTrainingSample,
+    ]
+  );
 
   // --- Genius Lyrics Search ---
   const searchGenius = useCallback(
@@ -569,6 +660,7 @@ export const useAnnotationSystem = (trackInfo: TrackInfo | null) => {
     pendingMarkerStart,
     setPendingMarkerStart,
     merSuggestions,
+    setMerSuggestions, // Neue Export für App.tsx
     songContext,
     setSongContext,
     profiles,

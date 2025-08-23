@@ -46,6 +46,34 @@
   - **Aufwand**: 2-3 Tage
   - **Abhängigkeiten**: GEMS_COLORS erweitern
   - **Akzeptanzkriterien**: 5 verschiedene Emotionstypen unterscheidbar
+  - **Status**: 🔄 IN BEARBEITUNG - Einheitliche Marker implementiert, Tooltip-Verbesserungen geplant
+
+  - [ ] **T-002.1**: Visuelle Hierarchie & Emotion Mapping
+
+    - **Beschreibung**: Tooltip-Header in GEMS-Farben, Valence/Arousal-Indikatoren
+    - **Aufwand**: 1-2 Tage
+    - **Abhängigkeiten**: T-002 (aktuelle einheitliche Marker)
+    - **Akzeptanzkriterien**: Jede Emotion hat ihre charakteristische Farbe im Tooltip
+
+  - [ ] **T-002.2**: Interaktive Datenvisualisierung
+
+    - **Beschreibung**: Mini-Balkendiagramme für Intensität, Confidence-Ringe, GEMS-Pie-Charts
+    - **Aufwand**: 2-3 Tage
+    - **Abhängigkeiten**: T-002.1
+    - **Akzeptanzkriterien**: Visuelle Darstellung aller numerischen Werte
+
+  - [ ] **T-002.3**: Emotionale Kontextualisierung
+
+    - **Beschreibung**: Zweisprachige Darstellung (Deutsch/Englisch) + Emojis
+    - **Aufwand**: 1-2 Tage
+    - **Abhängigkeiten**: T-002.2
+    - **Akzeptanzkriterien**: Emotionen sind emotional verständlich
+
+  - [ ] **T-002.4**: Musikalische Kontextualisierung
+    - **Beschreibung**: Zeitstempel, musikalische Phase, Audio-Metriken, Vergleich
+    - **Aufwand**: 2-3 Tage
+    - **Abhängigkeiten**: T-002.3
+    - **Akzeptanzkriterien**: Vollständiger musikalischer Kontext verfügbar
 
 - [ ] **T-003**: Mini-Spektrogramm hinzufügen
   - **Beschreibung**: 2D-Heatmap für grobe Struktur-Erkennung

@@ -28,6 +28,7 @@ import { stringToHash } from "./utils/hash";
 import { cleanFileName } from "./utils/fileNameParser";
 import { handleExport, handleImport } from "./utils/importExport";
 import { indexedDBService, fallbackStorage } from "./services/indexedDBService";
+import { generateMerSuggestions } from "./services/geminiService";
 
 // --- Main App Component ---
 const App: React.FC = () => {
@@ -91,16 +92,17 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  // State für IndexedDB-Status
+  const [isIndexedDBReady, setIsIndexedDBReady] = useState(false);
+
   // IndexedDB-Initialisierung
   useEffect(() => {
     const initIndexedDB = async () => {
       try {
         await indexedDBService.init();
+        setIsIndexedDBReady(true);
       } catch (error) {
-        console.warn(
-          "⚠️ [App] IndexedDB nicht verfügbar, verwende Fallback:",
-          error
-        );
+        console.warn("IndexedDB nicht verfügbar:", error);
       }
     };
 
@@ -110,8 +112,6 @@ const App: React.FC = () => {
   const {
     audioContext,
     audioBuffer,
-    waveform,
-    setWaveform,
     isPlaying,
     currentTime,
     volume,
@@ -123,6 +123,9 @@ const App: React.FC = () => {
     togglePlayPause,
   } = useAudioEngine();
 
+  // Lokaler waveform State für die App
+  const [waveform, setWaveform] = useState<any[] | null>(null);
+
   const {
     markers,
     setMarkers,
@@ -131,6 +134,7 @@ const App: React.FC = () => {
     pendingMarkerStart,
     setPendingMarkerStart,
     merSuggestions,
+    setMerSuggestions, // Neue Import für AI-Suggestions-Persistierung
     songContext,
     setSongContext,
     profiles,
@@ -161,38 +165,146 @@ const App: React.FC = () => {
     backToGeniusSearch,
   } = useAnnotationSystem(trackInfo);
 
-  // Effect to restore TrackInfo from IndexedDB when audio buffer is available
-  useEffect(() => {
-    if (audioBuffer && !trackInfo) {
-      // Versuche TrackInfo aus IndexedDB wiederherzustellen
-      const restoreTrackInfo = async () => {
-        try {
-          const savedState = await indexedDBService.loadAppState();
-          if (savedState?.currentTrackLocalId) {
-            const trackMetadata =
-              savedState.trackMetadata[savedState.currentTrackLocalId];
-            if (trackMetadata) {
+  // Ref für Wiederherstellungs-Status
+  const isRestoringRef = useRef(false);
+
+  // Ref für "bereits ausgeführt" Status
+  const hasRunRef = useRef(false);
+
+  // AI Suggestions Manager - Lädt und speichert AI-generierte Marker
+  const suggestionsManager = useCallback(
+    async (trackId: string) => {
+      try {
+        // Check if AI suggestions already exist in IndexedDB
+        const hasCachedSuggestions = await indexedDBService.hasSuggestions(
+          trackId
+        );
+
+        if (hasCachedSuggestions) {
+          const cachedSuggestions = await indexedDBService.loadSuggestions(
+            trackId
+          );
+          if (cachedSuggestions) {
+            setMerSuggestions(cachedSuggestions);
+            return;
+          }
+        }
+
+        setMerSuggestions([]);
+      } catch (error) {
+        console.warn("Fehler im AI-Suggestions Manager:", error);
+        setMerSuggestions([]);
+      }
+    },
+    [setMerSuggestions]
+  );
+
+  // Separate Funktion für DB-Wiederherstellung
+  const restoreFromIndexedDB = useCallback(async () => {
+    // Verhindere mehrfache Ausführung
+    if (isRestoringRef.current) {
+      return;
+    }
+
+    isRestoringRef.current = true;
+
+    try {
+      const savedState = await indexedDBService.loadAppState();
+
+      if (savedState?.currentTrackLocalId) {
+        const trackMetadata =
+          savedState.trackMetadata[savedState.currentTrackLocalId];
+        if (trackMetadata) {
+          // Lade zuerst die AI-Suggestions
+          try {
+            await suggestionsManager(savedState.currentTrackLocalId);
+          } catch (suggestionsError) {
+            console.warn(
+              "Fehler beim Laden der AI-Suggestions:",
+              suggestionsError
+            );
+          }
+
+          // Lade die Audio-Datei aus der DB
+          try {
+            const audioFile = await indexedDBService.loadAudioFile(
+              trackMetadata.name
+            );
+            if (audioFile) {
+              // Lade das Waveform aus der DB
+              const cachedWaveform = await indexedDBService.loadWaveform(
+                savedState.currentTrackLocalId
+              );
+              if (cachedWaveform) {
+                setWaveform(cachedWaveform);
+              }
+
+              // Lade den AudioBuffer aus der DB
+              try {
+                if (audioFile.arrayBuffer && audioContext) {
+                  const decodedBuffer = await audioContext.decodeAudioData(
+                    audioFile.arrayBuffer
+                  );
+                  initializeAudio(decodedBuffer);
+                }
+              } catch (decodeError) {
+                console.warn(
+                  "Fehler beim Dekodieren der Audio-Datei:",
+                  decodeError
+                );
+              }
+
+              // Setze trackInfo
               const restoredTrackInfo: TrackInfo = {
                 localId: savedState.currentTrackLocalId,
                 name: trackMetadata.name,
-                duration_s: audioBuffer.duration,
+                duration_s: trackMetadata.duration,
                 title: trackMetadata.title,
                 artist: trackMetadata.artist,
               };
               setTrackInfo(restoredTrackInfo);
             }
+          } catch (audioError) {
+            console.warn("Fehler beim Laden der Audio-Datei:", audioError);
           }
-        } catch (error) {
-          console.warn(
-            "⚠️ [App] Fehler beim Wiederherstellen des TrackInfo:",
-            error
-          );
         }
-      };
-
-      restoreTrackInfo();
+      }
+    } catch (error) {
+      console.warn("Fehler beim Wiederherstellen des TrackInfo:", error);
+    } finally {
+      // Entsperre die Wiederherstellung
+      isRestoringRef.current = false;
     }
-  }, [audioBuffer]);
+  }, [suggestionsManager, audioContext, initializeAudio]);
+
+  // Effect für DB-Wiederherstellung nach IndexedDB-Initialisierung
+  useEffect(() => {
+    // Warte bis IndexedDB bereit ist
+    if (!isIndexedDBReady) {
+      return;
+    }
+
+    // Verhindere mehrfache Ausführung des useEffect
+    if (hasRunRef.current) {
+      return;
+    }
+
+    hasRunRef.current = true;
+
+    const startRestore = async () => {
+      try {
+        await restoreFromIndexedDB();
+      } catch (error) {
+        console.warn("Fehler bei der DB-Wiederherstellung:", error);
+      }
+    };
+
+    // Starte sofort, da IndexedDB bereits bereit ist
+    startRestore();
+  }, [isIndexedDBReady, restoreFromIndexedDB]);
+
+  // Entfernt: Der zweite useEffect für DB-Wiederherstellung ist nicht mehr nötig,
+  // da der erste useEffect nach IndexedDB-Init jetzt alles übernimmt
 
   // Simplified Waveform Manager - replaces complex useEffect chains
   const waveformManager = useCallback(
@@ -366,7 +478,7 @@ const App: React.FC = () => {
           // App State in IndexedDB speichern (für Wiederherstellung)
           try {
             const appState = {
-              currentTrackLocalId: localId,
+              currentTrackLocalId: localId, // Verwende localId direkt, nicht trackInfo.localId
               trackMetadata: {
                 [localId]: {
                   name: file.name,
@@ -381,6 +493,7 @@ const App: React.FC = () => {
               profiles: [],
               activeProfileId: null,
               songContext: {},
+              suggestions: {}, // Neue Eigenschaft für AI-Suggestions
             };
 
             await indexedDBService.saveAppState(appState);
@@ -431,8 +544,34 @@ const App: React.FC = () => {
 
     setIsProcessing(true);
     setProcessingMessage("Analyzing emotions with AI...");
+
     try {
-      await analyzeEmotions(waveform, trackInfo.duration_s);
+      // Nur 1x AI-Aufruf - direkt hier
+      const currentSuggestions = await generateMerSuggestions(
+        waveform,
+        trackInfo.duration_s,
+        trackInfo ? songContext[trackInfo.localId] : undefined,
+        trackInfo?.localId
+      );
+
+      // State korrekt aktualisieren
+      setMerSuggestions(currentSuggestions);
+
+      // In DB speichern
+      if (currentSuggestions.length > 0) {
+        try {
+          await indexedDBService.saveSuggestions(
+            trackInfo.localId,
+            currentSuggestions
+          );
+        } catch (saveError) {
+          console.warn(
+            "⚠️ [App] Fehler beim Speichern der AI-Suggestions:",
+            saveError
+          );
+        }
+      }
+
       setIsDirty(true);
     } catch (error) {
       console.error("AI analysis failed:", error);

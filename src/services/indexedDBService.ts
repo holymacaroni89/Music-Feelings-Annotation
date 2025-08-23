@@ -1,3 +1,5 @@
+import { GEMS } from "../types";
+
 interface AudioFileData {
   name: string;
   size: number;
@@ -23,11 +25,15 @@ interface AppState {
   activeProfileId: string | null;
   geniusApiKey?: string;
   songContext: { [trackLocalId: string]: string };
+  suggestions: { [trackLocalId: string]: import("../types").MerSuggestion[] }; // Verwende den korrekten Typ aus types.ts
 }
+
+// Verwende den korrekten MerSuggestion Typ aus types.ts
+type MerSuggestion = import("../types").MerSuggestion;
 
 class IndexedDBService {
   private dbName = "music-emotion-annotation-v2";
-  private version = 2; // Version erhöht für neuen waveforms Store
+  private version = 3; // Version erhöht für neuen AI-Suggestions Store
   private db: IDBDatabase | null = null;
 
   async init(): Promise<void> {
@@ -35,21 +41,24 @@ class IndexedDBService {
       const request = indexedDB.open(this.dbName, this.version);
 
       request.onerror = () => {
-        console.error(
-          "❌ [IndexedDB] Fehler beim Öffnen der Datenbank:",
-          request.error
-        );
+        console.error("Fehler beim Öffnen der Datenbank:", request.error);
         reject(request.error);
       };
 
       request.onsuccess = () => {
         this.db = request.result;
-
         resolve();
       };
 
       request.onupgradeneeded = (event) => {
+        console.log(
+          `🔄 [IndexedDB] DB-Upgrade erforderlich: Version ${this.version}`
+        );
         const db = (event.target as IDBOpenDBRequest).result;
+        const oldVersion = event.oldVersion;
+        console.log(
+          `📈 [IndexedDB] Upgrade von Version ${oldVersion} auf ${this.version}`
+        );
 
         // Audio Files Store
         if (!db.objectStoreNames.contains("audioFiles")) {
@@ -77,6 +86,16 @@ class IndexedDBService {
             unique: false,
           });
         }
+
+        // AI Suggestions Store
+        if (!db.objectStoreNames.contains("aiSuggestions")) {
+          const suggestionsStore = db.createObjectStore("aiSuggestions", {
+            keyPath: "trackId",
+          });
+          suggestionsStore.createIndex("timestamp", "timestamp", {
+            unique: false,
+          });
+        }
       };
     });
   }
@@ -97,10 +116,7 @@ class IndexedDBService {
       };
 
       request.onerror = () => {
-        console.error(
-          "❌ [IndexedDB] Fehler beim Speichern der Audio-Datei:",
-          request.error
-        );
+        console.error("Fehler beim Speichern der Audio-Datei:", request.error);
         reject(request.error);
       };
     });
@@ -126,10 +142,7 @@ class IndexedDBService {
       };
 
       request.onerror = () => {
-        console.error(
-          "❌ [IndexedDB] Fehler beim Laden der Audio-Datei:",
-          request.error
-        );
+        console.error("Fehler beim Laden der Audio-Datei:", request.error);
         reject(request.error);
       };
     });
@@ -151,10 +164,7 @@ class IndexedDBService {
       };
 
       request.onerror = () => {
-        console.error(
-          "❌ [IndexedDB] Fehler beim Speichern des App States:",
-          request.error
-        );
+        console.error("Fehler beim Speichern des App States:", request.error);
         reject(request.error);
       };
     });
@@ -306,34 +316,165 @@ class IndexedDBService {
   }
 
   async getDatabaseInfo(): Promise<{
-    audioFilesCount: number;
-    totalSize: number;
+    audioFiles: number;
+    appStates: number;
+    waveforms: number;
+    aiSuggestions: number;
   }> {
     if (!this.db) {
       throw new Error("IndexedDB nicht initialisiert");
     }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(["audioFiles"], "readonly");
-      const store = transaction.objectStore("audioFiles");
+      const transaction = this.db!.transaction(
+        ["audioFiles", "appState", "waveforms", "aiSuggestions"],
+        "readonly"
+      );
 
-      const request = store.getAll();
+      const audioStore = transaction.objectStore("audioFiles");
+      const stateStore = transaction.objectStore("appState");
+      const waveformStore = transaction.objectStore("waveforms");
+      const suggestionsStore = transaction.objectStore("aiSuggestions");
+
+      const audioCount = audioStore.count();
+      const stateCount = stateStore.count();
+      const waveformCount = waveformStore.count();
+      const suggestionsCount = suggestionsStore.count();
+
+      Promise.all([
+        new Promise<number>((res) => {
+          audioCount.onsuccess = () => res(audioCount.result);
+        }),
+        new Promise<number>((res) => {
+          stateCount.onsuccess = () => res(stateCount.result);
+        }),
+        new Promise<number>((res) => {
+          waveformCount.onsuccess = () => res(waveformCount.result);
+        }),
+        new Promise<number>((res) => {
+          suggestionsCount.onsuccess = () => res(suggestionsCount.result);
+        }),
+      ])
+        .then(([audio, state, waveform, suggestions]) => {
+          resolve({
+            audioFiles: audio,
+            appStates: state,
+            waveforms: waveform,
+            aiSuggestions: suggestions,
+          });
+        })
+        .catch(reject);
+    });
+  }
+
+  // Neue Methoden für AI-Suggestions
+  async saveSuggestions(
+    trackId: string,
+    suggestions: MerSuggestion[]
+  ): Promise<void> {
+    if (!this.db) {
+      throw new Error("IndexedDB nicht initialisiert");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["aiSuggestions"], "readwrite");
+      const store = transaction.objectStore("aiSuggestions");
+
+      const request = store.put({
+        trackId,
+        suggestions,
+        timestamp: Date.now(),
+        version: "1.0",
+      });
 
       request.onsuccess = () => {
-        const audioFiles = request.result;
-        const totalSize = audioFiles.reduce((sum, file) => sum + file.size, 0);
-
-        resolve({
-          audioFilesCount: audioFiles.length,
-          totalSize,
-        });
+        resolve();
       };
 
       request.onerror = () => {
         console.error(
-          "❌ [IndexedDB] Fehler beim Abrufen der Datenbank-Info:",
+          "Fehler beim Speichern der AI-Suggestions:",
           request.error
         );
+        reject(request.error);
+      };
+    });
+  }
+
+  async loadSuggestions(trackId: string): Promise<MerSuggestion[] | null> {
+    if (!this.db) {
+      throw new Error("IndexedDB nicht initialisiert");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["aiSuggestions"], "readonly");
+      const store = transaction.objectStore("aiSuggestions");
+
+      const request = store.get(trackId);
+
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(request.result.suggestions);
+        } else {
+          resolve(null);
+        }
+      };
+
+      request.onerror = () => {
+        console.error("Fehler beim Laden der AI-Suggestions:", request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  async hasSuggestions(trackId: string): Promise<boolean> {
+    if (!this.db) {
+      throw new Error("IndexedDB nicht initialisiert");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["aiSuggestions"], "readonly");
+      const store = transaction.objectStore("aiSuggestions");
+
+      const request = store.get(trackId);
+
+      request.onsuccess = () => {
+        const hasSuggestions = !!request.result;
+        resolve(hasSuggestions);
+      };
+
+      request.onerror = () => {
+        console.error("Fehler beim Prüfen der AI-Suggestions:", request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  async clearSuggestions(trackId?: string): Promise<void> {
+    if (!this.db) {
+      throw new Error("IndexedDB nicht initialisiert");
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["aiSuggestions"], "readwrite");
+      const store = transaction.objectStore("aiSuggestions");
+
+      let request: IDBRequest;
+
+      if (trackId) {
+        // Lösche nur für einen bestimmten Track
+        request = store.delete(trackId);
+      } else {
+        // Lösche alle AI-Suggestions
+        request = store.clear();
+      }
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      request.onerror = () => {
+        console.error("Fehler beim Löschen der AI-Suggestions:", request.error);
         reject(request.error);
       };
     });
@@ -352,7 +493,7 @@ export const fallbackStorage = {
         JSON.stringify(state)
       );
     } catch (e) {
-      console.error("❌ [Fallback] Fehler beim Speichern in localStorage:", e);
+      console.error("Fehler beim Speichern in localStorage:", e);
     }
   },
 
@@ -363,7 +504,7 @@ export const fallbackStorage = {
         return JSON.parse(saved);
       }
     } catch (e) {
-      console.error("❌ [Fallback] Fehler beim Laden aus localStorage:", e);
+      console.error("Fehler beim Laden aus localStorage:", e);
     }
     return null;
   },

@@ -567,72 +567,98 @@ export const useAudioEngine = () => {
   }, [volume]);
 
   useEffect(() => {
-    try {
-      const context = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+    // AudioContext wird erst nach Benutzer-Interaktion erstellt
+    const createAudioContext = () => {
+      try {
+        const context = new (window.AudioContext ||
+          (window as any).webkitAudioContext)();
 
-      const gainNode = context.createGain();
-      gainNode.connect(context.destination);
+        const gainNode = context.createGain();
+        gainNode.connect(context.destination);
 
-      gainNodeRef.current = gainNode;
-      setAudioContext(context);
+        gainNodeRef.current = gainNode;
+        setAudioContext(context);
 
-      // Audio-Datei nach AudioContext-Bereitschaft wiederherstellen
-      const restoreAudioFile = async () => {
-        try {
-          // Versuche zuerst IndexedDB
+        // Audio-Datei nach AudioContext-Bereitschaft wiederherstellen
+        const restoreAudioFile = async () => {
           try {
-            const audioFiles = await indexedDBService.getDatabaseInfo();
+            // Versuche zuerst IndexedDB
+            try {
+              const audioFiles = await indexedDBService.getDatabaseInfo();
 
-            if (audioFiles.audioFilesCount > 0) {
-              // Lade den gespeicherten App State
-              const savedState = await indexedDBService.loadAppState();
-              if (savedState?.currentTrackLocalId) {
-                // Lade die entsprechende Audio-Datei
-                const trackMetadata =
-                  savedState.trackMetadata[savedState.currentTrackLocalId];
-                if (trackMetadata) {
-                  try {
-                    const audioFile = await indexedDBService.loadAudioFile(
-                      trackMetadata.name
-                    );
-                    if (audioFile && audioFile.arrayBuffer) {
-                      const decodedBuffer = await context.decodeAudioData(
-                        audioFile.arrayBuffer
+              if (audioFiles.audioFilesCount > 0) {
+                // Lade den gespeicherten App State
+                const savedState = await indexedDBService.loadAppState();
+                if (savedState?.currentTrackLocalId) {
+                  // Lade die entsprechende Audio-Datei
+                  const trackMetadata =
+                    savedState.trackMetadata[savedState.currentTrackLocalId];
+                  if (trackMetadata) {
+                    try {
+                      const audioFile = await indexedDBService.loadAudioFile(
+                        trackMetadata.name
                       );
+                      if (audioFile && audioFile.arrayBuffer) {
+                        const decodedBuffer = await context.decodeAudioData(
+                          audioFile.arrayBuffer
+                        );
 
-                      setAudioBuffer(decodedBuffer);
-                      return; // Erfolgreich wiederhergestellt
+                        setAudioBuffer(decodedBuffer);
+                        return; // Erfolgreich wiederhergestellt
+                      }
+                    } catch (audioError) {
+                      // Audio-Datei konnte nicht geladen werden
                     }
-                  } catch (audioError) {
-                    // Audio-Datei konnte nicht geladen werden
                   }
                 }
               }
-            }
-          } catch (indexedDBError) {
-            // IndexedDB nicht verfügbar, verwende Fallback
+            } catch (indexedDBError) {
+              // IndexedDB nicht verfügbar, verwende Fallback
 
-            // Fallback: localStorage für Metadaten
-            const savedStateJSON = localStorage.getItem(
-              "music-emotion-annotation-audio-metadata"
-            );
-            if (savedStateJSON) {
-              const metadata = JSON.parse(savedStateJSON);
-              // Fallback-Metadaten gefunden, aber Audio kann nicht wiederhergestellt werden
+              // Fallback: localStorage für Metadaten
+              const savedStateJSON = localStorage.getItem(
+                "music-emotion-annotation-audio-metadata"
+              );
+              if (savedStateJSON) {
+                const metadata = JSON.parse(savedStateJSON);
+                // Fallback-Metadaten gefunden, aber Audio kann nicht wiederhergestellt werden
+              }
             }
+          } catch (e) {
+            // Fehler bei der Wiederherstellung
           }
-        } catch (e) {
-          // Fehler bei der Wiederherstellung
-        }
-      };
+        };
 
-      // Kurze Verzögerung für stabilen AudioContext
-      setTimeout(restoreAudioFile, 100);
-    } catch (e) {
-      console.error("Failed to create AudioContext:", e);
-      alert("Web Audio API is not supported in this browser.");
-    }
+        // Kurze Verzögerung für stabilen AudioContext
+        setTimeout(restoreAudioFile, 100);
+      } catch (e) {
+        console.error("Failed to create AudioContext:", e);
+        alert("Web Audio API is not supported in this browser.");
+      }
+    };
+
+    // Event-Listener für Benutzer-Interaktion hinzufügen
+    const handleUserInteraction = () => {
+      if (!audioContext) {
+        createAudioContext();
+        // Event-Listener nach der ersten Interaktion entfernen
+        document.removeEventListener("click", handleUserInteraction);
+        document.removeEventListener("keydown", handleUserInteraction);
+        document.removeEventListener("touchstart", handleUserInteraction);
+      }
+    };
+
+    // Event-Listener hinzufügen
+    document.addEventListener("click", handleUserInteraction);
+    document.addEventListener("keydown", handleUserInteraction);
+    document.addEventListener("touchstart", handleUserInteraction);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener("click", handleUserInteraction);
+      document.removeEventListener("keydown", handleUserInteraction);
+      document.removeEventListener("touchstart", handleUserInteraction);
+    };
   }, []);
 
   const resetAudio = () => {

@@ -206,6 +206,9 @@ const Timeline: React.FC<TimelineProps> = ({
   const [closestSuggestion, setClosestSuggestion] =
     useState<MerSuggestion | null>(null);
 
+  // Ref für vorherigen closestSuggestion (Debug)
+  const prevClosestSuggestion = useRef<MerSuggestion | null>(null);
+
   // Neue Multi-Track States
   const [trackZoomY, setTrackZoomY] = useState(1);
   const [trackPanY, setTrackPanY] = useState(0);
@@ -238,6 +241,7 @@ const Timeline: React.FC<TimelineProps> = ({
     isSwipeGesture: boolean;
     swipeStartX: number;
     longPressTimer: NodeJS.Timeout | null;
+    dragStartX: number | null;
   }>({
     isDragging: false,
     draggedMarkerId: null,
@@ -248,6 +252,7 @@ const Timeline: React.FC<TimelineProps> = ({
     isSwipeGesture: false,
     swipeStartX: 0,
     longPressTimer: null,
+    dragStartX: null,
   });
 
   const getXFromTime = useCallback((time: number) => time * zoom, [zoom]);
@@ -676,6 +681,47 @@ const Timeline: React.FC<TimelineProps> = ({
       });
     },
     [renderUnifiedEmotionalMarker, getXFromTime, getHotspotSize]
+  );
+
+  // Neue Funktion für GEMS-Farben in Tooltips
+  const getGemsTooltipColor = useCallback((emotion: GEMS) => {
+    const config = EMOTION_VISUAL_CONFIGS[emotion];
+    return config ? config.baseColor : "#fbbf24"; // Fallback: Gelb
+  }, []);
+
+  // Neue Funktion: Prüft, ob ein Klick auf einen emotionalen Marker erfolgt ist
+  const getClickedSuggestion = useCallback(
+    (mouseX: number, mouseY: number): MerSuggestion | null => {
+      if (!suggestions || suggestions.length === 0) return null;
+
+      const canvasRect = canvasRef.current?.getBoundingClientRect();
+      if (!canvasRect) return null;
+
+      // Konvertiere Maus-Position zu Canvas-Koordinaten
+      const canvasX = mouseX - canvasRect.left;
+      const canvasY = mouseY - canvasRect.top;
+
+      // Prüfe jeden Suggestion-Marker
+      for (const suggestion of suggestions) {
+        const markerX = getXFromTime(suggestion.time);
+        const markerY = canvasHeight / 2; // Zentriert
+        const markerSize = getHotspotSize(suggestion.intensity / 100, 16);
+
+        // Prüfe, ob Klick innerhalb des Marker-Bereichs liegt
+        const halfSize = markerSize / 2;
+        if (
+          canvasX >= markerX - halfSize &&
+          canvasX <= markerX + halfSize &&
+          canvasY >= markerY - halfSize &&
+          canvasY <= markerY + halfSize
+        ) {
+          return suggestion;
+        }
+      }
+
+      return null;
+    },
+    [suggestions, getXFromTime, canvasHeight, getHotspotSize]
   );
 
   // Multi-Track Canvas Rendering
@@ -1337,9 +1383,51 @@ const Timeline: React.FC<TimelineProps> = ({
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     const time = getMouseEventTime(e);
 
-    if (!containerRef.current) return;
+    if (!containerRef.current) {
+      return;
+    }
     const currentY =
       e.clientY - containerRef.current.getBoundingClientRect().top;
+
+    // Prüfe zuerst, ob ein emotionaler Marker geklickt wurde
+    const clickedSuggestion = getClickedSuggestion(e.clientX, e.clientY);
+    if (clickedSuggestion && onSuggestionClick) {
+      // Erstelle einen echten Marker aus der Suggestion
+      const newMarker: Marker = {
+        id: `marker-${Date.now()}`,
+        trackLocalId: "emotion-generated", // Platzhalter
+        title: "Emotion Marker",
+        artist: "AI Generated",
+        duration_s: 1, // 1 Sekunde Dauer
+        t_start_s: clickedSuggestion.time,
+        t_end_s: clickedSuggestion.time + 1,
+        valence: clickedSuggestion.valence || 0,
+        arousal: clickedSuggestion.arousal || 0,
+        intensity: clickedSuggestion.intensity || 50,
+        confidence: clickedSuggestion.confidence || 0.8,
+        gems: clickedSuggestion.gems || "",
+        trigger: clickedSuggestion.trigger || [],
+        imagery: clickedSuggestion.reason || "AI-generierte emotionale Analyse",
+        sync_notes: `${clickedSuggestion.intensity}% Intensität`,
+      };
+
+      // Konvertiere Marker zu MerSuggestion für onSuggestionClick
+      const suggestionForClick: MerSuggestion = {
+        time: clickedSuggestion.time,
+        valence: clickedSuggestion.valence || 0,
+        arousal: clickedSuggestion.arousal || 0,
+        intensity: clickedSuggestion.intensity || 50,
+        confidence: clickedSuggestion.confidence || 0.8,
+        reason: clickedSuggestion.reason || "AI-generierte emotionale Analyse",
+        gems: clickedSuggestion.gems || "",
+        trigger: clickedSuggestion.trigger || [],
+        sync_notes: `${clickedSuggestion.intensity}% Intensität`,
+        imagery: clickedSuggestion.reason || "AI-generierte emotionale Analyse",
+      };
+
+      onSuggestionClick(suggestionForClick);
+      return; // Beende hier, da wir einen Marker erstellt haben
+    }
 
     // Multi-Track Click Logic - Only for explicit track interactions
     if (effectiveTracks.length > 0) {
@@ -1387,6 +1475,7 @@ const Timeline: React.FC<TimelineProps> = ({
           isSwipeGesture: false,
           swipeStartX: 0,
           longPressTimer: null,
+          dragStartX: null,
         };
         clickedOnMarker = true;
       } else if (
@@ -1403,6 +1492,7 @@ const Timeline: React.FC<TimelineProps> = ({
           isSwipeGesture: false,
           swipeStartX: 0,
           longPressTimer: null,
+          dragStartX: null,
         };
         clickedOnMarker = true;
       } else if (mouseX > startX && mouseX < endX) {
@@ -1416,6 +1506,7 @@ const Timeline: React.FC<TimelineProps> = ({
           isSwipeGesture: false,
           swipeStartX: 0,
           longPressTimer: null,
+          dragStartX: null,
         };
         clickedOnMarker = true;
       }
@@ -1441,12 +1532,15 @@ const Timeline: React.FC<TimelineProps> = ({
         isSwipeGesture: false,
         swipeStartX: 0,
         longPressTimer: null,
+        dragStartX: e.clientX,
       };
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current || !scrollerRef.current) return;
+    if (!containerRef.current || !scrollerRef.current) {
+      return;
+    }
     const time = Math.max(0, Math.min(duration, getMouseEventTime(e)));
     setMouseTime(time);
 
@@ -1473,18 +1567,39 @@ const Timeline: React.FC<TimelineProps> = ({
 
     // Tooltip & Suggestion Hover Logic
     // BUGFIX: Find the CLOSEST suggestion, not the first one in range.
-    const suggestionHitRadius = 10;
+    // Hit-Radius an Zoom anpassen: Bei Zoom 50 sollte der Radius größer sein
+    const suggestionHitRadius = Math.max(20, zoom * 0.5); // Mindestens 20px, bei Zoom 50 = 25px
     let closestSuggestion: MerSuggestion | null = null;
     let minDistance = Infinity;
 
     for (const suggestion of suggestions) {
       const suggestionX = getXFromTime(suggestion.time);
-      const distance = Math.abs(currentX - suggestionX);
-      if (distance < minDistance && distance < suggestionHitRadius) {
-        minDistance = distance;
-        closestSuggestion = suggestion;
+      const xDistance = Math.abs(currentX - suggestionX);
+
+      // 2D Hit-Test: Berücksichtige sowohl X als auch Y
+      // Y-Distanz: Maus muss in der Nähe der Track-Mitte sein
+      // Verwende die tatsächliche Canvas-Höhe statt trackHeight Parameter
+      const canvasHeight = containerRef.current?.clientHeight || 100;
+      const trackCenterY = canvasHeight / 2; // Canvas-Mitte
+      const yDistance = Math.abs(currentY - trackCenterY);
+      const yHitRadius = canvasHeight * 0.3; // 30% der Canvas-Höhe
+
+      // 2D Hit-Test: X UND Y müssen im Bereich sein
+      if (xDistance < suggestionHitRadius && yDistance < yHitRadius) {
+        const totalDistance = Math.sqrt(
+          xDistance * xDistance + yDistance * yDistance
+        );
+        if (totalDistance < minDistance) {
+          minDistance = totalDistance;
+          closestSuggestion = suggestion;
+        }
       }
     }
+
+    if (closestSuggestion !== prevClosestSuggestion.current) {
+      prevClosestSuggestion.current = closestSuggestion;
+    }
+
     setClosestSuggestion(closestSuggestion);
 
     // Cursor and Marker Hover Logic
@@ -1531,6 +1646,24 @@ const Timeline: React.FC<TimelineProps> = ({
 
     // Dragging Logic
     if (!interactionState.current.isDragging) return;
+
+    // Timeline Scroll Logic - Update scroll position based on mouse movement
+    if (interactionState.current.draggedMarkerId === null) {
+      // This is a timeline drag (not a marker drag)
+      const scroller = scrollerRef.current;
+      if (scroller) {
+        // Calculate the change in mouse position since drag start
+        const dragStartX = interactionState.current.dragStartX || e.clientX;
+        const deltaX = dragStartX - e.clientX;
+
+        // Update scroll position (invert deltaX for natural feel)
+        const newScrollLeft = scroller.scrollLeft + deltaX;
+        scroller.scrollLeft = Math.max(0, newScrollLeft);
+
+        // Update drag start position for next move
+        interactionState.current.dragStartX = e.clientX;
+      }
+    }
 
     const { draggedMarkerId, draggedHandle, dragOffset } =
       interactionState.current;
@@ -1640,6 +1773,7 @@ const Timeline: React.FC<TimelineProps> = ({
           isSwipeGesture: false,
           swipeStartX: interactionState.current.swipeStartX,
           longPressTimer: interactionState.current.longPressTimer,
+          dragStartX: null,
         };
         clickedOnMarker = true;
       } else if (
@@ -1656,6 +1790,7 @@ const Timeline: React.FC<TimelineProps> = ({
           isSwipeGesture: false,
           swipeStartX: interactionState.current.swipeStartX,
           longPressTimer: interactionState.current.longPressTimer,
+          dragStartX: null,
         };
         clickedOnMarker = true;
       } else if (x > startX && x < endX) {
@@ -1669,6 +1804,7 @@ const Timeline: React.FC<TimelineProps> = ({
           isSwipeGesture: false,
           swipeStartX: interactionState.current.swipeStartX,
           longPressTimer: interactionState.current.longPressTimer,
+          dragStartX: null,
         };
         clickedOnMarker = true;
       }
@@ -1816,25 +1952,44 @@ const Timeline: React.FC<TimelineProps> = ({
     setClosestSuggestion(null); // Reset closest suggestion on end
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    onZoom(e.deltaY < 0 ? "in" : "out");
-  };
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      e.preventDefault();
+      onZoom(e.deltaY < 0 ? "in" : "out");
+    },
+    [onZoom]
+  );
+
+  // useEffect für Wheel Event Listener
+  useEffect(() => {
+    const scrollerElement = scrollerRef.current;
+    if (!scrollerElement) return;
+
+    // Event Listener mit passive: false hinzufügen
+    scrollerElement.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      scrollerElement.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
 
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full relative" style={{ height: `${canvasHeight}px` }}>
       <div
         ref={scrollerRef}
-        className="w-full h-full cursor-default overflow-x-auto bg-gray-900 relative touch-pan-y"
-        onWheel={handleWheel}
+        className="w-full h-full cursor-default bg-gray-900 relative touch-pan-y overflow-x-auto"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{ overflow: "visible" }}
       >
         <div
           ref={containerRef}
           className="relative h-full"
+          style={{
+            minWidth: `${Math.max(100, duration * zoom)}px`,
+            width: `${Math.max(100, duration * zoom)}px`,
+            height: `${canvasHeight}px`,
+          }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -1863,7 +2018,7 @@ const Timeline: React.FC<TimelineProps> = ({
               position: "absolute",
               left: 0,
               top: 0,
-              width: "100%",
+              width: `${Math.max(100, duration * zoom)}px`,
               height: `${canvasHeight}px`,
             }}
           />
@@ -1873,10 +2028,10 @@ const Timeline: React.FC<TimelineProps> = ({
         </div>
       </div>
 
-      {/* Tooltip für Suggestions - AUSSERHALB des Scroller-Containers */}
+      {/* Enhanced Tooltip für Suggestions - T-002.1: Visuelle Hierarchie & Emotion Mapping */}
       {closestSuggestion && (
         <div
-          className="fixed z-[9999] bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs pointer-events-none border border-gray-600"
+          className="fixed z-[9999] bg-gray-800 text-white px-4 py-3 rounded-lg shadow-xl text-sm max-w-sm pointer-events-none border border-gray-600"
           style={{
             left: `${Math.max(
               20,
@@ -1884,24 +2039,141 @@ const Timeline: React.FC<TimelineProps> = ({
             )}px`,
             top: "60px",
             filter: "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.7))",
-            maxWidth: "300px",
+            maxWidth: "350px",
             wordWrap: "break-word",
           }}
         >
-          <div className="font-semibold text-yellow-400 mb-1">
-            {closestSuggestion.gems || "Emotion"}
+          {/* T-002.1: GEMS-Farben im Tooltip-Header */}
+          <div
+            className="flex items-center gap-3 mb-3 p-2 rounded-lg"
+            style={{
+              backgroundColor:
+                EMOTION_VISUAL_CONFIGS[
+                  closestSuggestion.gems || GEMS.JoyfulActivation
+                ]?.baseColor + "20" || "#fbbf2420",
+              borderLeft: `4px solid ${
+                EMOTION_VISUAL_CONFIGS[
+                  closestSuggestion.gems || GEMS.JoyfulActivation
+                ]?.baseColor || "#fbbf24"
+              }`,
+            }}
+          >
+            <div
+              className="w-4 h-4 rounded-full shadow-md"
+              style={{
+                backgroundColor:
+                  EMOTION_VISUAL_CONFIGS[
+                    closestSuggestion.gems || GEMS.JoyfulActivation
+                  ]?.baseColor || "#fbbf24",
+                boxShadow: `0 0 8px ${
+                  EMOTION_VISUAL_CONFIGS[
+                    closestSuggestion.gems || GEMS.JoyfulActivation
+                  ]?.baseColor || "#fbbf24"
+                }40`,
+              }}
+            />
+            <div className="flex-1">
+              <div
+                className="font-bold text-base"
+                style={{
+                  color:
+                    EMOTION_VISUAL_CONFIGS[
+                      closestSuggestion.gems || GEMS.JoyfulActivation
+                    ]?.baseColor || "#fbbf24",
+                }}
+              >
+                {closestSuggestion.gems || "Emotion"}
+              </div>
+              <div className="text-xs text-gray-400 font-mono">
+                @{closestSuggestion.time.toFixed(1)}s
+              </div>
+            </div>
           </div>
-          <div className="text-gray-300">
-            Intensität: {closestSuggestion.intensity}%
+
+          {/* T-002.1: Valence/Arousal-Indikatoren */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {/* Valence Indicator */}
+            <div className="bg-gray-700 rounded-lg p-2">
+              <div className="text-xs text-gray-400 mb-1 uppercase tracking-wide">
+                Valence
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-gray-600 rounded-full h-2 relative overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.abs(
+                        (closestSuggestion.valence || 0) * 50 + 50
+                      )}%`,
+                      backgroundColor:
+                        (closestSuggestion.valence || 0) >= 0
+                          ? "#10B981" // Positive (grün)
+                          : "#EF4444", // Negative (rot)
+                      marginLeft:
+                        (closestSuggestion.valence || 0) < 0
+                          ? `${50 + (closestSuggestion.valence || 0) * 50}%`
+                          : "50%",
+                    }}
+                  />
+                  {/* Center line */}
+                  <div className="absolute top-0 left-1/2 w-0.5 h-full bg-gray-400 transform -translate-x-1/2" />
+                </div>
+                <span className="text-xs text-gray-300 font-mono w-8 text-right">
+                  {(closestSuggestion.valence || 0) >= 0 ? "+" : ""}
+                  {(closestSuggestion.valence || 0).toFixed(1)}
+                </span>
+              </div>
+            </div>
+
+            {/* Arousal Indicator */}
+            <div className="bg-gray-700 rounded-lg p-2">
+              <div className="text-xs text-gray-400 mb-1 uppercase tracking-wide">
+                Arousal
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-gray-600 rounded-full h-2 relative overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${(closestSuggestion.arousal || 0) * 100}%`,
+                      backgroundColor: "#F59E0B", // Orange für Arousal
+                    }}
+                  />
+                </div>
+                <span className="text-xs text-gray-300 font-mono w-8 text-right">
+                  {(closestSuggestion.arousal || 0).toFixed(1)}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="text-gray-300">
-            Confidence:{" "}
-            {Math.round((closestSuggestion.confidence || 0.8) * 100)}%
+
+          {/* Metriken */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="text-center">
+              <div className="text-xs text-gray-400 uppercase tracking-wide">
+                Intensität
+              </div>
+              <div className="text-lg font-bold text-white">
+                {closestSuggestion.intensity}%
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-400 uppercase tracking-wide">
+                Confidence
+              </div>
+              <div className="text-lg font-bold text-white">
+                {Math.round((closestSuggestion.confidence || 0.8) * 100)}%
+              </div>
+            </div>
           </div>
+
+          {/* AI-Analyse */}
           {closestSuggestion.reason && (
-            <div className="text-gray-400 text-xs mt-2 border-t border-gray-600 pt-2">
-              <div className="font-medium mb-1">AI-Analyse:</div>
-              {closestSuggestion.reason}
+            <div className="text-gray-400 text-xs mt-3 pt-3 border-t border-gray-600">
+              <div className="font-medium mb-2 text-gray-300 uppercase tracking-wide">
+                AI-Analyse
+              </div>
+              <div className="leading-relaxed">{closestSuggestion.reason}</div>
             </div>
           )}
         </div>
