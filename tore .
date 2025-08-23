@@ -1,0 +1,5 @@
+[33m2907403[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: Implement waveform caching with IndexedDB and clean up debug logs
+[33m71a855c[m Implement IndexedDB for audio file persistence and automatic restoration
+[33m81e73bc[m cleanup
+[33mcb21fca[m hover fix, refactoring
+[33me8caf81[m switch to cursor

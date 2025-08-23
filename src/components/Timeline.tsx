@@ -22,6 +22,11 @@ import {
   flip,
   autoUpdate,
 } from "@floating-ui/react";
+import {
+  EMOTION_VISUAL_CONFIGS,
+  getIntensityColor,
+  getConfidenceAlpha,
+} from "../constants";
 
 interface TimelineProps {
   duration: number;
@@ -197,9 +202,11 @@ const Timeline: React.FC<TimelineProps> = ({
   const scrollerRef = useRef<HTMLDivElement>(null); // This is the outer, scrolling div
   const [mouseTime, setMouseTime] = useState<number | null>(null);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
+  const [hoveredTrackId, setHoveredTrackId] = useState<string | null>(null);
+  const [closestSuggestion, setClosestSuggestion] =
+    useState<MerSuggestion | null>(null);
 
   // Neue Multi-Track States
-  const [hoveredTrackId, setHoveredTrackId] = useState<string | null>(null);
   const [trackZoomY, setTrackZoomY] = useState(1);
   const [trackPanY, setTrackPanY] = useState(0);
 
@@ -500,13 +507,6 @@ const Timeline: React.FC<TimelineProps> = ({
       confidence: number,
       size: number
     ) => {
-      // Import der neuen Konstanten
-      const {
-        EMOTION_VISUAL_CONFIGS,
-        getIntensityColor,
-        getConfidenceAlpha,
-      } = require("../constants");
-
       const config = EMOTION_VISUAL_CONFIGS[emotion];
       if (!config) return;
 
@@ -586,6 +586,98 @@ const Timeline: React.FC<TimelineProps> = ({
     [renderEmotionalHotspot, getXFromTime, getHotspotSize]
   );
 
+  // Neue Funktion für einheitliche emotionale Marker (Vorschlag 1)
+  const renderUnifiedEmotionalMarker = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      emotion: GEMS,
+      intensity: number,
+      confidence: number,
+      size: number
+    ) => {
+      const config = EMOTION_VISUAL_CONFIGS[emotion];
+      if (!config) return;
+
+      const alpha = getConfidenceAlpha(confidence);
+      const color = getIntensityColor(config.intensityGradient, intensity);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+
+      // Raute zeichnen (Diamond) - Größe basiert auf Intensität
+      const halfSize = size / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - halfSize); // Oben
+      ctx.lineTo(x + halfSize, y); // Rechts
+      ctx.lineTo(x, y + halfSize); // Unten
+      ctx.lineTo(x - halfSize, y); // Links
+      ctx.closePath();
+      ctx.fill();
+
+      // Intensitäts-Ring für hohe Intensität (dicker Ring)
+      if (intensity > 0.7) {
+        ctx.strokeStyle = config.baseColor;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+
+      // Confidence-Indikator (kleiner innerer Ring)
+      if (confidence > 0.8) {
+        ctx.strokeStyle = config.hoverColor;
+        ctx.lineWidth = 1;
+        const innerSize = size * 0.6;
+        const innerHalfSize = innerSize / 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - innerHalfSize);
+        ctx.lineTo(x + innerHalfSize, y);
+        ctx.lineTo(x, y + innerHalfSize);
+        ctx.lineTo(x - innerHalfSize, y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    },
+    []
+  );
+
+  // Neue Funktion für einheitliche emotionale Marker (Vorschlag 1)
+  const renderUnifiedEmotionalMarkers = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      suggestions: MerSuggestion[],
+      zoom: number,
+      canvasHeight: number
+    ) => {
+      if (!suggestions || suggestions.length === 0) return;
+
+      suggestions.forEach((suggestion) => {
+        const x = getXFromTime(suggestion.time);
+        const y = canvasHeight / 2; // Zentriert
+
+        // Bestimme dominante Emotion aus GEMS
+        const dominantEmotion = suggestion.gems || GEMS.JoyfulActivation;
+        const intensity = suggestion.intensity / 100; // Konvertiere 0-100 zu 0-1
+        const confidence = suggestion.confidence || 0.8;
+
+        // Verwende die neue einheitliche Marker-Funktion
+        renderUnifiedEmotionalMarker(
+          ctx,
+          x,
+          y,
+          dominantEmotion,
+          intensity,
+          confidence,
+          getHotspotSize(intensity, 16)
+        );
+      });
+    },
+    [renderUnifiedEmotionalMarker, getXFromTime, getHotspotSize]
+  );
+
   // Multi-Track Canvas Rendering
   const renderMultiTrackCanvas = useCallback(() => {
     if (!canvasRef.current || effectiveTracks.length === 0) return;
@@ -612,9 +704,9 @@ const Timeline: React.FC<TimelineProps> = ({
       renderTrack(ctx, track, yOffset, canvasWidth, trackHeight, zoom);
     });
 
-    // Render emotional hotspots (T-002)
+    // Render emotional hotspots (T-002) - Jetzt als einheitliche Marker
     if (suggestions && suggestions.length > 0) {
-      renderEmotionalHotspots(ctx, suggestions, zoom, canvasHeight);
+      renderUnifiedEmotionalMarkers(ctx, suggestions, zoom, canvasHeight);
     }
 
     // Render markers overlay
@@ -631,7 +723,7 @@ const Timeline: React.FC<TimelineProps> = ({
     currentTime,
     defaultTrackRenderConfig.showGrid,
     suggestions,
-    renderEmotionalHotspots,
+    renderUnifiedEmotionalMarkers,
   ]);
 
   // Background grid renderer
@@ -1163,6 +1255,11 @@ const Timeline: React.FC<TimelineProps> = ({
 
     // MER Suggestions are now rendered as HTML elements above the canvas
 
+    // Emotional Hotspots (T-002) - Jetzt als einheitliche Marker
+    if (suggestions && suggestions.length > 0) {
+      renderUnifiedEmotionalMarkers(ctx, suggestions, zoom, height);
+    }
+
     // Markers
     markers.forEach((marker) => {
       const startX = getXFromTime(marker.t_start_s);
@@ -1216,11 +1313,13 @@ const Timeline: React.FC<TimelineProps> = ({
     waveform,
     colorPalette,
     hoveredMarkerId,
+    suggestions,
+    renderUnifiedEmotionalMarkers,
   ]);
 
   useEffect(() => {
     draw();
-  }, [draw, waveform]); // Waveform als Dependency hinzugefügt
+  }, [draw, waveform, suggestions]); // Waveform und Suggestions als Dependencies
 
   const getMouseEventTime = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1386,6 +1485,7 @@ const Timeline: React.FC<TimelineProps> = ({
         closestSuggestion = suggestion;
       }
     }
+    setClosestSuggestion(closestSuggestion);
 
     // Cursor and Marker Hover Logic
     let newHoveredMarkerId = null;
@@ -1476,6 +1576,7 @@ const Timeline: React.FC<TimelineProps> = ({
     handleMouseUp(e);
     setMouseTime(null);
     setHoveredMarkerId(null);
+    setClosestSuggestion(null); // Reset closest suggestion on leave
     if (e.currentTarget) {
       e.currentTarget.style.cursor = "default";
     }
@@ -1712,6 +1813,7 @@ const Timeline: React.FC<TimelineProps> = ({
     interactionState.current.dragOffset = 0;
 
     setHoveredMarkerId(null);
+    setClosestSuggestion(null); // Reset closest suggestion on end
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -1720,61 +1822,90 @@ const Timeline: React.FC<TimelineProps> = ({
   };
 
   return (
-    <div
-      ref={scrollerRef}
-      className="w-full h-full cursor-default overflow-x-auto bg-gray-900 relative touch-pan-y"
-      onWheel={handleWheel}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className="w-full h-full relative">
       <div
-        ref={containerRef}
-        className="relative h-full"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
+        ref={scrollerRef}
+        className="w-full h-full cursor-default overflow-x-auto bg-gray-900 relative touch-pan-y"
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ overflow: "visible" }}
       >
-        {/* Lyrics-Zwischenspeicher Status */}
-        {hasLyricsContext && (
-          <div
-            className="absolute top-2 left-2 z-10 bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-2 cursor-pointer hover:bg-green-500 transition-colors duration-200 active:bg-green-700"
-            onClick={onLyricsStatusClick}
-            title="Klicken um Lyrics anzuzeigen"
-          >
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            <span>Lyrics verfügbar</span>
-            {lyricsContextLength && (
-              <span className="bg-green-700 px-2 py-0.5 rounded text-xs">
-                {lyricsContextLength} Zeichen
-              </span>
-            )}
-          </div>
-        )}
+        <div
+          ref={containerRef}
+          className="relative h-full"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+        >
+          {/* Lyrics-Zwischenspeicher Status */}
+          {hasLyricsContext && (
+            <div
+              className="absolute top-2 left-2 z-10 bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-2 cursor-pointer hover:bg-green-500 transition-colors duration-200 active:bg-green-700"
+              onClick={onLyricsStatusClick}
+              title="Klicken um Lyrics anzuzeigen"
+            >
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              <span>Lyrics verfügbar</span>
+              {lyricsContextLength && (
+                <span className="bg-green-700 px-2 py-0.5 rounded text-xs">
+                  {lyricsContextLength} Zeichen
+                </span>
+              )}
+            </div>
+          )}
 
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            width: "100%",
-            height: `${canvasHeight}px`,
-          }}
-        />
-
-        {/* Interactive Suggestion Elements with Floating Tooltips */}
-        {suggestions.map((suggestion, index) => (
-          <SuggestionTooltip
-            key={`suggestion-${suggestion.time}-${index}`}
-            suggestion={suggestion}
-            x={getXFromTime(suggestion.time)}
-            y={8}
-            onSuggestionClick={onSuggestionClick}
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              width: "100%",
+              height: `${canvasHeight}px`,
+            }}
           />
-        ))}
+
+          {/* Alle Suggestions werden jetzt als einheitliche Marker auf dem Canvas gerendert */}
+          {/* Keine separaten HTML-Elemente mehr */}
+        </div>
       </div>
+
+      {/* Tooltip für Suggestions - AUSSERHALB des Scroller-Containers */}
+      {closestSuggestion && (
+        <div
+          className="fixed z-[9999] bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs pointer-events-none border border-gray-600"
+          style={{
+            left: `${Math.max(
+              20,
+              getXFromTime(closestSuggestion.time) + 20
+            )}px`,
+            top: "60px",
+            filter: "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.7))",
+            maxWidth: "300px",
+            wordWrap: "break-word",
+          }}
+        >
+          <div className="font-semibold text-yellow-400 mb-1">
+            {closestSuggestion.gems || "Emotion"}
+          </div>
+          <div className="text-gray-300">
+            Intensität: {closestSuggestion.intensity}%
+          </div>
+          <div className="text-gray-300">
+            Confidence:{" "}
+            {Math.round((closestSuggestion.confidence || 0.8) * 100)}%
+          </div>
+          {closestSuggestion.reason && (
+            <div className="text-gray-400 text-xs mt-2 border-t border-gray-600 pt-2">
+              <div className="font-medium mb-1">AI-Analyse:</div>
+              {closestSuggestion.reason}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
