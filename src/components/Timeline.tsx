@@ -591,7 +591,7 @@ const Timeline: React.FC<TimelineProps> = ({
     [renderEmotionalHotspot, getXFromTime, getHotspotSize]
   );
 
-  // Neue Funktion für einheitliche emotionale Marker (Vorschlag 1)
+  // Neue Funktion für einheitliche emotionale Marker - Jetzt mit Emojis und farbigen Kreisen
   const renderUnifiedEmotionalMarker = useCallback(
     (
       ctx: CanvasRenderingContext2D,
@@ -602,47 +602,81 @@ const Timeline: React.FC<TimelineProps> = ({
       confidence: number,
       size: number
     ) => {
-      const config = EMOTION_VISUAL_CONFIGS[emotion];
-      if (!config) return;
-
-      const alpha = getConfidenceAlpha(confidence);
-      const color = getIntensityColor(config.intensityGradient, intensity);
-
       ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = color;
 
-      // Raute zeichnen (Diamond) - Größe basiert auf Intensität
-      const halfSize = size / 2;
+      // Spezielle Behandlung für Marker bei x=0: Verschiebe ihn 60% seiner Größe nach rechts
+      let renderX = x;
+      if (x === 0) {
+        const backgroundRadius = size * 1.2;
+        renderX = backgroundRadius * 1.2; // 60% der Größe nach rechts (backgroundRadius * 1.2)
+      }
+
+      // Bestimme die Farbe und das Emoji basierend auf der Emotion (gleiche Logik wie im Tooltip)
+      let emotionColor: string;
+      let emoji: string;
+
+      switch (emotion) {
+        case GEMS.Wonder:
+          emotionColor = "#A78BFA"; // purple-400
+          emoji = "🤩";
+          break;
+        case GEMS.Transcendence:
+          emotionColor = "#60A5FA"; // blue-400
+          emoji = "✨";
+          break;
+        case GEMS.Tenderness:
+          emotionColor = "#F9A8D4"; // pink-300
+          emoji = "🥰";
+          break;
+        case GEMS.Nostalgia:
+          emotionColor = "#FBBF24"; // yellow-400
+          emoji = "🥺";
+          break;
+        case GEMS.Peacefulness:
+          emotionColor = "#34D399"; // green-400
+          emoji = "😌";
+          break;
+        case GEMS.Power:
+          emotionColor = "#EF4444"; // red-500
+          emoji = "💪";
+          break;
+        case GEMS.JoyfulActivation:
+          emotionColor = "#FCD34D"; // yellow-300
+          emoji = "😊";
+          break;
+        case GEMS.Tension:
+          emotionColor = "#F97316"; // orange-500
+          emoji = "😰";
+          break;
+        case GEMS.Sadness:
+          emotionColor = "#6B7280"; // gray-500
+          emoji = "😢";
+          break;
+        default:
+          emotionColor = "#6B7280"; // gray-500
+          emoji = "🎵";
+      }
+
+      // Zeichne den dunklen Hintergrundkreis
+      ctx.fillStyle = "#111827"; // gray-900
+      ctx.globalAlpha = 0.95;
+      const backgroundRadius = size * 1.2; // Größer gemacht
       ctx.beginPath();
-      ctx.moveTo(x, y - halfSize); // Oben
-      ctx.lineTo(x + halfSize, y); // Rechts
-      ctx.lineTo(x, y + halfSize); // Unten
-      ctx.lineTo(x - halfSize, y); // Links
-      ctx.closePath();
+      ctx.arc(renderX, y, backgroundRadius, 0, 2 * Math.PI);
       ctx.fill();
 
-      // Intensitäts-Ring für hohe Intensität (dicker Ring)
-      if (intensity > 0.7) {
-        ctx.strokeStyle = config.baseColor;
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
+      // Zeichne den farbigen Rand um den Hintergrund
+      ctx.strokeStyle = emotionColor;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.9;
+      ctx.stroke();
 
-      // Confidence-Indikator (kleiner innerer Ring)
-      if (confidence > 0.8) {
-        ctx.strokeStyle = config.hoverColor;
-        ctx.lineWidth = 1;
-        const innerSize = size * 0.6;
-        const innerHalfSize = innerSize / 2;
-        ctx.beginPath();
-        ctx.moveTo(x, y - innerHalfSize);
-        ctx.lineTo(x + innerHalfSize, y);
-        ctx.lineTo(x, y + innerHalfSize);
-        ctx.lineTo(x - innerHalfSize, y);
-        ctx.closePath();
-        ctx.stroke();
-      }
+      // Zeichne das Emoji in der Mitte
+      ctx.font = `${size * 1.2}px Arial`; // Noch größere Schrift
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.globalAlpha = 1.0;
+      ctx.fillText(emoji, renderX, y);
 
       ctx.restore();
     },
@@ -1977,14 +2011,15 @@ const Timeline: React.FC<TimelineProps> = ({
     <div className="w-full relative" style={{ height: `${canvasHeight}px` }}>
       <div
         ref={scrollerRef}
-        className="w-full h-full cursor-default bg-gray-900 relative touch-pan-y overflow-x-auto"
+        className="w-full cursor-default bg-gray-900 relative touch-pan-y overflow-x-auto overflow-y-hidden"
+        style={{ height: `${canvasHeight}px` }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         <div
           ref={containerRef}
-          className="relative h-full"
+          className="relative"
           style={{
             minWidth: `${Math.max(100, duration * zoom)}px`,
             width: `${Math.max(100, duration * zoom)}px`,
@@ -2035,7 +2070,9 @@ const Timeline: React.FC<TimelineProps> = ({
           style={{
             left: `${Math.max(
               20,
-              getXFromTime(closestSuggestion.time) + 20
+              getXFromTime(closestSuggestion.time) -
+                (scrollerRef.current?.scrollLeft || 0) +
+                20
             )}px`,
             top: "60px",
             filter: "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.7))",
