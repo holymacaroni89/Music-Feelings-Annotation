@@ -12,6 +12,7 @@ import {
   LyricsIcon,
   VisualizationSettingsIcon,
   ApiKeyIcon,
+  PipelineIcon,
 } from "./icons";
 import ProfileSelector from "./ProfileSelector";
 import { Profile, TrackInfo } from "../types";
@@ -100,6 +101,8 @@ interface HeaderProps {
   onVolumeChange: (volume: number) => void;
   onZoom: (direction: "in" | "out") => void;
   onOpenSettings: () => void;
+  onOpenPipeline: () => void;
+  hasGeminiKey: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -133,6 +136,8 @@ const Header: React.FC<HeaderProps> = ({
   onVolumeChange,
   onZoom,
   onOpenSettings,
+  onOpenPipeline,
+  hasGeminiKey,
 }) => {
   // Pull-to-refresh for reloading audio
   const pullToRefresh = usePullToRefresh(() => {
@@ -420,6 +425,17 @@ const Header: React.FC<HeaderProps> = ({
                 >
                   <ApiKeyIcon />
                 </Button>
+                {hasGeminiKey && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors duration-200 rounded-md"
+                    onClick={onOpenPipeline}
+                    title="Pipeline Testing (Developer Mode)"
+                  >
+                    <PipelineIcon />
+                  </Button>
+                )}
               </div>
             </div>
           </div>

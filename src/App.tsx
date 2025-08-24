@@ -9,6 +9,7 @@ import SettingsModal from "./components/SettingsModal";
 import BottomNavigation from "./components/BottomNavigation";
 import GeniusSearchModal from "./components/GeniusSearchModal";
 import { Button } from "./components/ui/button";
+import { SparklesIcon, SpinnerIcon } from "./components/icons";
 import {
   Marker,
   WaveformPoint,
@@ -29,6 +30,7 @@ import { cleanFileName } from "./utils/fileNameParser";
 import { handleExport, handleImport } from "./utils/importExport";
 import { indexedDBService, fallbackStorage } from "./services/indexedDBService";
 import { generateMerSuggestions } from "./services/geminiService";
+import { clearAnalysisCache } from "./services/geminiService";
 
 // --- Main App Component ---
 const App: React.FC = () => {
@@ -40,6 +42,13 @@ const App: React.FC = () => {
 
   // Visualization Settings
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
+  const [pipelineResults, setPipelineResults] = useState<any[]>([]);
+  const [validationResults, setValidationResults] = useState<any[]>([]);
+  const [currentValidation, setCurrentValidation] = useState<any>(null);
+  const [validationStep, setValidationStep] = useState<
+    "setup" | "validating" | "complete"
+  >("setup");
   const [waveformDetail, setWaveformDetail] = useState(2000);
   const [colorPalette, setColorPalette] = useState<ColorPalette>("vibrant");
 
@@ -575,13 +584,356 @@ const App: React.FC = () => {
       setIsDirty(true);
     } catch (error) {
       console.error("AI analysis failed:", error);
+
+      // Behalte bestehende Suggestions bei, falls vorhanden
+      if (merSuggestions.length > 0) {
+        // Behalte bestehende Suggestions
+      } else {
+        // Nur bei Fehler und ohne bestehende Suggestions: Leere Liste setzen
+        setMerSuggestions([]);
+      }
+
+      // Zeige benutzerfreundliche Fehlermeldung
       alert(
-        "Could not get emotion analysis from the AI. Please check your API key and network connection."
+        "Could not get emotion analysis from the AI. Please check your API key and network connection. Existing markers and suggestions are preserved."
       );
       setIsDirty(false);
     } finally {
       setIsProcessing(false);
       setProcessingMessage("");
+    }
+  };
+
+  const handlePipelineTest = async () => {
+    if (!waveform || !trackInfo) return;
+    setIsProcessing(true);
+    setProcessingMessage("Führe Pipeline-Test durch...");
+    try {
+      const currentSuggestions = await generateMerSuggestions(
+        waveform,
+        trackInfo.duration_s,
+        trackInfo ? songContext[trackInfo.localId] : undefined,
+        trackInfo?.localId
+      );
+
+      const pipelineResult = {
+        fileName: trackInfo.name,
+        timestamp: new Date().toISOString(),
+        lyrics: !!(trackInfo && songContext[trackInfo.localId]),
+        response: { suggestions: currentSuggestions },
+        quality: calculatePipelineQuality(currentSuggestions),
+      };
+
+      setPipelineResults((prev) => [...prev, pipelineResult]);
+
+      // Starte Validierung
+      setCurrentValidation({
+        ...pipelineResult,
+        validations: currentSuggestions.map((suggestion: any) => ({
+          suggestion,
+          timingAccuracy: 5,
+          lyricsCorrelation: 5,
+          visualCueRecognition: 5,
+          overallRating: 5,
+          notes: "",
+        })),
+      });
+
+      setValidationStep("validating");
+      setProcessingMessage("Pipeline-Test erfolgreich! Starte Validierung...");
+    } catch (error) {
+      console.error("Pipeline test failed:", error);
+      alert(
+        "Pipeline-Test fehlgeschlagen. Bitte überprüfe deine API-Keys und Netzwerkverbindung."
+      );
+    } finally {
+      setIsProcessing(false);
+      setProcessingMessage("");
+    }
+  };
+
+  const handleForceReAnalysis = async () => {
+    if (!waveform || !trackInfo) return;
+
+    // Cache für aktuelle Datei löschen
+    clearAnalysisCache(trackInfo.localId);
+
+    setIsProcessing(true);
+    setProcessingMessage("Erzwinge neue AI-Analyse...");
+
+    try {
+      const currentSuggestions = await generateMerSuggestions(
+        waveform,
+        trackInfo.duration_s,
+        trackInfo ? songContext[trackInfo.localId] : undefined,
+        trackInfo?.localId
+      );
+
+      const pipelineResult = {
+        fileName: trackInfo.name,
+        timestamp: new Date().toISOString(),
+        lyrics: !!(trackInfo && songContext[trackInfo.localId]),
+        response: { suggestions: currentSuggestions },
+        quality: calculatePipelineQuality(currentSuggestions),
+        forcedReAnalysis: true, // Markiere als erzwungene Neu-Analyse
+      };
+
+      setPipelineResults((prev) => [...prev, pipelineResult]);
+
+      // Starte Validierung
+      setCurrentValidation({
+        ...pipelineResult,
+        validations: currentSuggestions.map((suggestion: any) => ({
+          suggestion,
+          timingAccuracy: 5,
+          lyricsCorrelation: 5,
+          visualCueRecognition: 5,
+          overallRating: 5,
+          notes: "",
+        })),
+      });
+
+      setValidationStep("validating");
+      setProcessingMessage(
+        "Neue AI-Analyse erfolgreich! Starte Validierung..."
+      );
+    } catch (error) {
+      console.error("Forced re-analysis failed:", error);
+      alert(
+        "Erzwungene Neu-Analyse fehlgeschlagen. Bitte überprüfe deine API-Keys und Netzwerkverbindung."
+      );
+    } finally {
+      setIsProcessing(false);
+      setProcessingMessage("");
+    }
+  };
+
+  const handleValidationComplete = () => {
+    if (!currentValidation) return;
+
+    const validationResult = {
+      ...currentValidation,
+      validationTimestamp: new Date().toISOString(),
+      validationMetrics: calculateValidationMetrics(
+        currentValidation.validations
+      ),
+      userValidations: currentValidation.validations,
+    };
+
+    setValidationResults((prev) => [...prev, validationResult]);
+    setValidationStep("complete");
+    setCurrentValidation(null);
+  };
+
+  const updateValidation = (
+    suggestionIndex: number,
+    field: string,
+    value: number | string
+  ) => {
+    if (!currentValidation) return;
+
+    const updatedValidations = [...currentValidation.validations];
+    updatedValidations[suggestionIndex] = {
+      ...updatedValidations[suggestionIndex],
+      [field]: value,
+    };
+
+    // Berechne overall rating
+    const validation = updatedValidations[suggestionIndex];
+    const overallRating = Math.round(
+      (validation.timingAccuracy +
+        validation.lyricsCorrelation +
+        validation.visualCueRecognition) /
+        3
+    );
+
+    updatedValidations[suggestionIndex].overallRating = overallRating;
+
+    setCurrentValidation({
+      ...currentValidation,
+      validations: updatedValidations,
+    });
+  };
+
+  const calculateValidationMetrics = (validations: any[]) => {
+    if (validations.length === 0) return {};
+
+    const metrics = {
+      avgTimingAccuracy: 0,
+      avgLyricsCorrelation: 0,
+      avgVisualCueRecognition: 0,
+      avgOverallRating: 0,
+      totalSuggestions: validations.length,
+    };
+
+    validations.forEach((v) => {
+      metrics.avgTimingAccuracy += v.timingAccuracy;
+      metrics.avgLyricsCorrelation += v.lyricsCorrelation;
+      metrics.avgVisualCueRecognition += v.visualCueRecognition;
+      metrics.avgOverallRating += v.overallRating;
+    });
+
+    metrics.avgTimingAccuracy = Math.round(
+      metrics.avgTimingAccuracy / validations.length
+    );
+    metrics.avgLyricsCorrelation = Math.round(
+      metrics.avgLyricsCorrelation / validations.length
+    );
+    metrics.avgVisualCueRecognition = Math.round(
+      metrics.avgVisualCueRecognition / validations.length
+    );
+    metrics.avgOverallRating = Math.round(
+      metrics.avgOverallRating / validations.length
+    );
+
+    return metrics;
+  };
+
+  const calculatePipelineQuality = (suggestions: any[]) => {
+    if (suggestions.length === 0) return 0;
+    let totalConfidence = 0;
+    let totalIntensity = 0;
+    let hasValidGems = 0;
+    suggestions.forEach((s) => {
+      totalConfidence += s.confidence || 0;
+      totalIntensity += s.intensity || 0;
+      if (s.gems && s.gems.length > 0) hasValidGems++;
+    });
+    const avgConfidence = totalConfidence / suggestions.length;
+    const avgIntensity = totalIntensity / suggestions.length;
+    const gemsCoverage = hasValidGems / suggestions.length;
+    return (
+      (avgConfidence * 0.4 + (avgIntensity / 100) * 0.3 + gemsCoverage * 0.3) *
+      100
+    );
+  };
+
+  const exportPipelineResults = () => {
+    if (validationResults.length === 0) {
+      alert("Keine Validierungsergebnisse zum Exportieren vorhanden.");
+      return;
+    }
+
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      pipelineVersion: "2.0.0",
+      trackInfo: trackInfo
+        ? {
+            name: trackInfo.name,
+            duration: trackInfo.duration_s,
+            hasLyrics: !!(trackInfo && songContext[trackInfo.localId]),
+          }
+        : null,
+      validationResults,
+      summary: {
+        totalValidations: validationResults.length,
+        avgTimingAccuracy: (
+          validationResults.reduce(
+            (sum, r) => sum + r.validationMetrics.avgTimingAccuracy,
+            0
+          ) / validationResults.length
+        ).toFixed(1),
+        avgLyricsCorrelation: (
+          validationResults.reduce(
+            (sum, r) => sum + r.validationMetrics.avgLyricsCorrelation,
+            0
+          ) / validationResults.length
+        ).toFixed(1),
+        avgVisualCueRecognition: (
+          validationResults.reduce(
+            (sum, r) => sum + r.validationMetrics.avgVisualCueRecognition,
+            0
+          ) / validationResults.length
+        ).toFixed(1),
+        avgOverallRating: (
+          validationResults.reduce(
+            (sum, r) => sum + r.validationMetrics.avgOverallRating,
+            0
+          ) / validationResults.length
+        ).toFixed(1),
+      },
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pipeline-validation-results-${
+      new Date().toISOString().split("T")[0]
+    }.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    alert("Validierungsergebnisse erfolgreich exportiert!");
+  };
+
+  const copyValidationResultsToClipboard = async () => {
+    if (validationResults.length === 0) {
+      alert("Keine Validierungsergebnisse zum Kopieren vorhanden.");
+      return;
+    }
+
+    try {
+      const summaryText = `🧪 Timeline-Validierung Pipeline Ergebnisse
+
+📊 Zusammenfassung:
+• Gesamt-Validierungen: ${validationResults.length}
+• Durchschnittliche Timing-Genauigkeit: ${(
+        validationResults.reduce(
+          (sum, r) => sum + r.validationMetrics.avgTimingAccuracy,
+          0
+        ) / validationResults.length
+      ).toFixed(1)}/10
+• Durchschnittliche Lyrics-Korrelation: ${(
+        validationResults.reduce(
+          (sum, r) => sum + r.validationMetrics.avgLyricsCorrelation,
+          0
+        ) / validationResults.length
+      ).toFixed(1)}/10
+• Durchschnittliche Visuelle Cue-Erkennung: ${(
+        validationResults.reduce(
+          (sum, r) => sum + r.validationMetrics.avgVisualCueRecognition,
+          0
+        ) / validationResults.length
+      ).toFixed(1)}/10
+• Durchschnittliche Gesamtbewertung: ${(
+        validationResults.reduce(
+          (sum, r) => sum + r.validationMetrics.avgOverallRating,
+          0
+        ) / validationResults.length
+      ).toFixed(1)}/10
+
+🎵 Einzelne Validierungen:
+${validationResults
+  .map(
+    (result, index) => `
+Validierung #${index + 1} - ${result.fileName}:
+• Timing-Genauigkeit: ${result.validationMetrics.avgTimingAccuracy}/10
+• Lyrics-Korrelation: ${result.validationMetrics.avgLyricsCorrelation}/10
+• Visuelle Cue-Erkennung: ${result.validationMetrics.avgVisualCueRecognition}/10
+• Gesamtbewertung: ${result.validationMetrics.avgOverallRating}/10
+• Vorschläge validiert: ${result.validationMetrics.totalSuggestions}
+• Lyrics: ${result.lyrics ? "Ja" : "Nein"}
+`
+  )
+  .join("\n")}
+
+📅 Zeitstempel: ${new Date().toISOString()}
+🔧 Pipeline Version: 2.0.0 (Timeline-Validierung)`;
+
+      await navigator.clipboard.writeText(summaryText);
+      alert(
+        "Validierungsergebnisse erfolgreich in die Zwischenablage kopiert!"
+      );
+    } catch (error) {
+      console.error("Fehler beim Kopieren in die Zwischenablage:", error);
+      alert(
+        "Fehler beim Kopieren in die Zwischenablage. Bitte versuche es erneut."
+      );
     }
   };
 
@@ -744,6 +1096,8 @@ const App: React.FC = () => {
           )
         }
         onOpenSettings={() => setShowSettingsModal(true)}
+        onOpenPipeline={() => setShowPipelineModal(true)}
+        hasGeminiKey={hasGeminiKey}
       />
 
       <main className="flex flex-col lg:flex-row flex-grow overflow-hidden pb-20 lg:pb-0">
@@ -997,6 +1351,408 @@ const App: React.FC = () => {
         onColorPaletteChange={setColorPalette}
         audioBuffer={audioBuffer}
       />
+
+      {/* Pipeline Testing Modal */}
+      {showPipelineModal && (
+        <Modal onClose={() => setShowPipelineModal(false)} size="lg">
+          <div className="flex flex-col h-[90vh] max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-100">
+                🧪 Pipeline Testing - Echte Gemini-Validierung
+              </h3>
+              <Button
+                onClick={() => setShowPipelineModal(false)}
+                variant="ghost"
+                size="icon"
+                className="text-gray-400 hover:text-gray-300"
+              >
+                <XIcon />
+              </Button>
+            </div>
+
+            <div className="flex-1 p-4 overflow-y-auto min-h-0">
+              <div className="max-w-6xl mx-auto space-y-6">
+                {/* Test-Philosophie */}
+                <div className="bg-gray-800 rounded-lg p-6">
+                  <h3 className="text-xl font-semibold text-white mb-4">
+                    🧪 Timeline-Validierung Pipeline
+                  </h3>
+                  <p className="text-gray-300 leading-relaxed">
+                    Diese Pipeline validiert die Genauigkeit von Gemini's
+                    emotionalen Vorhersagen durch subjektive Bewertung von
+                    Timing, Lyrics-Korrelation und visueller Cue-Erkennung. Das
+                    ermöglicht es, Verbesserungen der AI-Vorhersagen quantitativ
+                    zu messen.
+                  </p>
+                </div>
+
+                {/* Pipeline-Status */}
+                <div className="bg-gray-800 rounded-lg p-6">
+                  <h3 className="text-xl font-semibold text-white mb-4">
+                    📊 Pipeline-Status
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gray-700 rounded-lg p-4 text-center">
+                      <div className="text-2xl font-bold text-blue-400">
+                        {validationResults.length}
+                      </div>
+                      <div className="text-gray-300">Validierungen</div>
+                    </div>
+                    <div className="bg-gray-700 rounded-lg p-4 text-center">
+                      <div className="text-2xl font-bold text-green-400">
+                        {validationResults.length > 0
+                          ? (
+                              validationResults.reduce(
+                                (sum, r) =>
+                                  sum + r.validationMetrics.avgOverallRating,
+                                0
+                              ) / validationResults.length
+                            ).toFixed(1)
+                          : "0.0"}
+                      </div>
+                      <div className="text-gray-300">Ø Gesamtbewertung</div>
+                    </div>
+                    <div className="bg-gray-700 rounded-lg p-4 text-center">
+                      <div className="text-2xl font-bold text-purple-400">
+                        {validationResults.length > 0
+                          ? (
+                              validationResults.reduce(
+                                (sum, r) =>
+                                  sum + r.validationMetrics.avgTimingAccuracy,
+                                0
+                              ) / validationResults.length
+                            ).toFixed(1)
+                          : "0.0"}
+                      </div>
+                      <div className="text-gray-300">Ø Timing-Genauigkeit</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pipeline-Ausführung */}
+                <div className="bg-gray-800 rounded-lg p-6">
+                  <h3 className="text-xl font-semibold text-white mb-4">
+                    🚀 Pipeline-Ausführung
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <Button
+                        onClick={handlePipelineTest}
+                        disabled={!waveform || !trackInfo || isProcessing}
+                        size="lg"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3"
+                      >
+                        {isProcessing ? (
+                          <div className="flex items-center gap-2">
+                            <SpinnerIcon />
+                            {processingMessage}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <SparklesIcon />
+                            Timeline-Validierung starten
+                          </div>
+                        )}
+                      </Button>
+                    </div>
+
+                    <div className="text-center">
+                      <Button
+                        onClick={handleForceReAnalysis}
+                        disabled={!waveform || !trackInfo || isProcessing}
+                        variant="outline"
+                        size="lg"
+                        className="border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white px-8 py-3"
+                      >
+                        🔄 Neue AI-Analyse erzwingen
+                      </Button>
+                      <p className="text-sm text-gray-400 mt-2">
+                        Umgeht den Cache und führt eine komplett neue
+                        Gemini-Analyse durch
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Validierungs-Interface */}
+                {validationStep === "validating" && currentValidation && (
+                  <div className="bg-gray-800 rounded-lg p-6">
+                    <h3 className="text-xl font-semibold text-white mb-4">
+                      ✅ Validierung: {currentValidation.fileName}
+                    </h3>
+                    <p className="text-gray-300 mb-6">
+                      Bewerte jede Gemini-Vorhersage auf einer Skala von 1-10:
+                    </p>
+
+                    <div className="space-y-6">
+                      {currentValidation.validations.map(
+                        (validation: any, index: number) => (
+                          <div
+                            key={index}
+                            className="bg-gray-700 rounded-lg p-4"
+                          >
+                            <div className="flex items-center justify-between mb-4">
+                              <h4 className="text-lg font-medium text-white">
+                                Vorschlag #{index + 1}:{" "}
+                                {validation.suggestion.gems} bei{" "}
+                                {validation.suggestion.time.toFixed(1)}s
+                              </h4>
+                              <div className="text-sm text-gray-400">
+                                Confidence:{" "}
+                                {(
+                                  validation.suggestion.confidence * 100
+                                ).toFixed(1)}
+                                %
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                  Timing-Genauigkeit (1-10)
+                                </label>
+                                <input
+                                  type="range"
+                                  min="1"
+                                  max="10"
+                                  value={validation.timingAccuracy}
+                                  onChange={(e) =>
+                                    updateValidation(
+                                      index,
+                                      "timingAccuracy",
+                                      parseInt(e.target.value)
+                                    )
+                                  }
+                                  className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <div className="text-center text-white font-medium">
+                                  {validation.timingAccuracy}/10
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                  Lyrics-Korrelation (1-10)
+                                </label>
+                                <input
+                                  type="range"
+                                  min="1"
+                                  max="10"
+                                  value={validation.lyricsCorrelation}
+                                  onChange={(e) =>
+                                    updateValidation(
+                                      index,
+                                      "lyricsCorrelation",
+                                      parseInt(e.target.value)
+                                    )
+                                  }
+                                  className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <div className="text-center text-white font-medium">
+                                  {validation.lyricsCorrelation}/10
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                  Visuelle Cue-Erkennung (1-10)
+                                </label>
+                                <input
+                                  type="range"
+                                  min="1"
+                                  max="10"
+                                  value={validation.visualCueRecognition}
+                                  onChange={(e) =>
+                                    updateValidation(
+                                      index,
+                                      "visualCueRecognition",
+                                      parseInt(e.target.value)
+                                    )
+                                  }
+                                  className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <div className="text-center text-white font-medium">
+                                  {validation.visualCueRecognition}/10
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="bg-gray-600 rounded-lg p-3 mb-4">
+                              <div className="text-sm text-gray-300 mb-2">
+                                <strong>Gemini-Vorhersage:</strong>{" "}
+                                {validation.suggestion.reason}
+                              </div>
+                              <div className="text-sm text-gray-400">
+                                <strong>GEMS:</strong>{" "}
+                                {validation.suggestion.gems} |
+                                <strong>Intensität:</strong>{" "}
+                                {validation.suggestion.intensity} |
+                                <strong>Trigger:</strong>{" "}
+                                {validation.suggestion.trigger?.join(", ")}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <div className="text-lg font-medium text-white">
+                                Gesamtbewertung:{" "}
+                                <span className="text-blue-400">
+                                  {validation.overallRating}/10
+                                </span>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                  Notizen (optional)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={validation.notes}
+                                  onChange={(e) =>
+                                    updateValidation(
+                                      index,
+                                      "notes",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Warum diese Bewertung?"
+                                  className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md text-white placeholder-gray-400"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <div className="text-center mt-6">
+                      <Button
+                        onClick={handleValidationComplete}
+                        size="lg"
+                        className="bg-green-600 hover:bg-green-700 text-white px-8 py-3"
+                      >
+                        ✅ Validierung abschließen
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Validierungsergebnisse */}
+                {validationStep === "complete" &&
+                  validationResults.length > 0 && (
+                    <div className="bg-gray-800 rounded-lg p-6">
+                      <h3 className="text-xl font-semibold text-white mb-4">
+                        📊 Validierungsergebnisse
+                      </h3>
+
+                      <div className="space-y-4">
+                        {validationResults.map((result, index) => (
+                          <div
+                            key={index}
+                            className="bg-gray-700 rounded-lg p-4"
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-lg font-medium text-white">
+                                {result.fileName}
+                              </h4>
+                              <div className="text-sm text-gray-400">
+                                {new Date(
+                                  result.validationTimestamp
+                                ).toLocaleString()}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                              <div className="text-center">
+                                <div className="text-2xl font-bold text-blue-400">
+                                  {result.validationMetrics.avgTimingAccuracy}
+                                  /10
+                                </div>
+                                <div className="text-sm text-gray-300">
+                                  Timing
+                                </div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-2xl font-bold text-green-400">
+                                  {
+                                    result.validationMetrics
+                                      .avgLyricsCorrelation
+                                  }
+                                  /10
+                                </div>
+                                <div className="text-sm text-gray-300">
+                                  Lyrics
+                                </div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-2xl font-bold text-purple-400">
+                                  {
+                                    result.validationMetrics
+                                      .avgVisualCueRecognition
+                                  }
+                                  /10
+                                </div>
+                                <div className="text-sm text-gray-300">
+                                  Visuell
+                                </div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-2xl font-bold text-yellow-400">
+                                  {result.validationMetrics.avgOverallRating}/10
+                                </div>
+                                <div className="text-sm text-gray-300">
+                                  Gesamt
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-sm text-gray-400">
+                              {result.validationMetrics.totalSuggestions}{" "}
+                              Vorschläge validiert | Lyrics:{" "}
+                              {result.lyrics ? "Ja" : "Nein"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-6 flex flex-col sm:flex-row gap-4 justify-center">
+                        <Button
+                          onClick={exportPipelineResults}
+                          variant="outline"
+                          size="lg"
+                          className="flex items-center gap-2"
+                        >
+                          📁 Ergebnisse exportieren
+                        </Button>
+
+                        <Button
+                          onClick={copyValidationResultsToClipboard}
+                          variant="secondary"
+                          size="lg"
+                          className="flex items-center gap-2"
+                        >
+                          📋 Ergebnisse in Zwischenablage kopieren
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                {/* Neue Validierung starten */}
+                {validationStep === "complete" && (
+                  <div className="bg-gray-800 rounded-lg p-6 text-center">
+                    <Button
+                      onClick={() => setValidationStep("setup")}
+                      size="lg"
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3"
+                    >
+                      🚀 Neue Validierung starten
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Bottom Navigation - Mobile Only */}
       <BottomNavigation

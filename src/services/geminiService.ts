@@ -422,8 +422,22 @@ For each moment you identify, provide a full annotation:
       },
     });
 
-    const jsonText = response.text.trim();
-    const result = JSON.parse(jsonText);
+    // Überprüfe Response-Struktur
+    if (!response || typeof response !== "object") {
+      throw new Error("Invalid response structure from AI model");
+    }
+
+    const jsonText = response.text?.trim();
+    if (!jsonText) {
+      throw new Error("Empty response from AI model");
+    }
+
+    let result;
+    try {
+      result = JSON.parse(jsonText);
+    } catch (parseError) {
+      throw new Error("Invalid JSON response from AI model");
+    }
 
     if (result && Array.isArray(result.suggestions)) {
       // Validate and format the suggestions
@@ -453,7 +467,10 @@ For each moment you identify, provide a full annotation:
             imagery: s.imagery || "",
           };
         })
-        .filter((s: MerSuggestion) => s.time <= duration && s.time >= 0);
+        .filter((s: MerSuggestion) => {
+          const isValid = s.time <= duration && s.time >= 0;
+          return isValid;
+        });
 
       // Cache das Ergebnis
       if (trackId && songContext) {
@@ -465,8 +482,6 @@ For each moment you identify, provide a full annotation:
 
     return [];
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
-    // Fallback or re-throw
     throw new Error("Failed to get analysis from AI model.");
   }
 };

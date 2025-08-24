@@ -27,6 +27,11 @@ import {
   getIntensityColor,
   getConfidenceAlpha,
 } from "../constants";
+import {
+  getAudioFeatureSnapshot,
+  formatTrackValue,
+  getTrackValueColor,
+} from "../utils/tooltipHelpers";
 
 interface TimelineProps {
   duration: number;
@@ -2080,7 +2085,7 @@ const Timeline: React.FC<TimelineProps> = ({
             wordWrap: "break-word",
           }}
         >
-          {/* T-002.1: GEMS-Farben im Tooltip-Header */}
+          {/* T-002.1: GEMS-Farben im Tooltip-Header mit Emoji */}
           <div
             className="flex items-center gap-3 mb-3 p-2 rounded-lg"
             style={{
@@ -2095,6 +2100,34 @@ const Timeline: React.FC<TimelineProps> = ({
               }`,
             }}
           >
+            {/* Emoji für die Emotion */}
+            <div className="text-2xl">
+              {(() => {
+                switch (closestSuggestion.gems || GEMS.JoyfulActivation) {
+                  case GEMS.Wonder:
+                    return "🤩";
+                  case GEMS.Transcendence:
+                    return "✨";
+                  case GEMS.Tenderness:
+                    return "🥰";
+                  case GEMS.Nostalgia:
+                    return "🥺";
+                  case GEMS.Peacefulness:
+                    return "😌";
+                  case GEMS.Power:
+                    return "💪";
+                  case GEMS.JoyfulActivation:
+                    return "😊";
+                  case GEMS.Tension:
+                    return "😰";
+                  case GEMS.Sadness:
+                    return "😢";
+                  default:
+                    return "🎵";
+                }
+              })()}
+            </div>
+
             <div
               className="w-4 h-4 rounded-full shadow-md"
               style={{
@@ -2203,6 +2236,156 @@ const Timeline: React.FC<TimelineProps> = ({
               </div>
             </div>
           </div>
+
+          {/* T-003.1: Erweiterte Track-Informationen im Tooltip */}
+          {waveform && (
+            <div className="mt-3 pt-3 border-t border-gray-600">
+              <div className="text-xs text-gray-400 mb-2 uppercase tracking-wide">
+                Audio-Features @{closestSuggestion.time.toFixed(1)}s
+              </div>
+
+              {/* Grid-Layout für Track-Informationen */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {/* Spectral Features */}
+                <div className="bg-gray-700 p-2 rounded">
+                  <div className="text-gray-400 mb-1">Spectral</div>
+                  <div
+                    className="text-white font-mono text-sm"
+                    style={{
+                      color: getTrackValueColor(
+                        getAudioFeatureSnapshot(
+                          waveform,
+                          closestSuggestion.time
+                        )?.spectral ?? null,
+                        "spectralCentroid"
+                      ),
+                    }}
+                  >
+                    {formatTrackValue(
+                      getAudioFeatureSnapshot(waveform, closestSuggestion.time)
+                        ?.spectral ?? null,
+                      "spectralCentroid"
+                    )}
+                  </div>
+                </div>
+
+                {/* Vocal Presence */}
+                <div className="bg-gray-700 p-2 rounded">
+                  <div className="text-gray-400 mb-1">Vocal</div>
+                  <div
+                    className="text-white font-mono text-sm"
+                    style={{
+                      color: getTrackValueColor(
+                        getAudioFeatureSnapshot(
+                          waveform,
+                          closestSuggestion.time
+                        )?.vocal ?? null,
+                        "vocalProbability"
+                      ),
+                    }}
+                  >
+                    {formatTrackValue(
+                      getAudioFeatureSnapshot(waveform, closestSuggestion.time)
+                        ?.vocal ?? null,
+                      "vocalProbability"
+                    )}
+                  </div>
+                </div>
+
+                {/* Onset Detection */}
+                <div className="bg-gray-700 p-2 rounded">
+                  <div className="text-gray-400 mb-1">Onset</div>
+                  <div
+                    className="text-white font-mono text-sm"
+                    style={{
+                      color: getTrackValueColor(
+                        getAudioFeatureSnapshot(
+                          waveform,
+                          closestSuggestion.time
+                        )?.onset ?? null,
+                        "onsetStrength"
+                      ),
+                    }}
+                  >
+                    {formatTrackValue(
+                      getAudioFeatureSnapshot(waveform, closestSuggestion.time)
+                        ?.onset ?? null,
+                      "onsetStrength"
+                    )}
+                  </div>
+                </div>
+
+                {/* Harmonic Complexity */}
+                <div className="bg-gray-700 p-2 rounded">
+                  <div className="text-gray-400 mb-1">Harmonic</div>
+                  <div
+                    className="text-white font-mono text-sm"
+                    style={{
+                      color: getTrackValueColor(
+                        getAudioFeatureSnapshot(
+                          waveform,
+                          closestSuggestion.time
+                        )?.harmonic ?? null,
+                        "harmonicRichness"
+                      ),
+                    }}
+                  >
+                    {formatTrackValue(
+                      getAudioFeatureSnapshot(waveform, closestSuggestion.time)
+                        ?.harmonic ?? null,
+                      "harmonicRichness"
+                    )}
+                  </div>
+                </div>
+
+                {/* Dynamic Intensity */}
+                <div className="bg-gray-700 p-2 rounded">
+                  <div className="text-gray-400 mb-1">Dynamics</div>
+                  <div
+                    className="text-white font-mono text-sm"
+                    style={{
+                      color: getTrackValueColor(
+                        getAudioFeatureSnapshot(
+                          waveform,
+                          closestSuggestion.time
+                        )?.dynamics ?? null,
+                        "localDynamics"
+                      ),
+                    }}
+                  >
+                    {formatTrackValue(
+                      getAudioFeatureSnapshot(waveform, closestSuggestion.time)
+                        ?.dynamics ?? null,
+                      "localDynamics"
+                    )}
+                  </div>
+                </div>
+
+                {/* Amplitude */}
+                <div className="bg-gray-700 p-2 rounded">
+                  <div className="text-gray-400 mb-1">Amplitude</div>
+                  <div
+                    className="text-white font-mono text-sm"
+                    style={{
+                      color: getTrackValueColor(
+                        getAudioFeatureSnapshot(
+                          waveform,
+                          closestSuggestion.time
+                        )?.amplitude ?? null,
+                        "amplitude"
+                      ),
+                    }}
+                  >
+                    {formatTrackValue(
+                      getAudioFeatureSnapshot(waveform, closestSuggestion.time)
+                        ?.amplitude ?? null,
+                      "amplitude"
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* AI-Analyse */}
           {closestSuggestion.reason && (

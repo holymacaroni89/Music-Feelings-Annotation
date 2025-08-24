@@ -299,3 +299,54 @@ export interface GeniusSongDetails extends GeniusSong {
   descriptionHtml: string | null; // Community annotations
   lyrics: string | null;
 }
+
+// Neue Metadaten-Interfaces für optimierte Gemini API Datenübergabe
+export interface HarmonicMetadata {
+  quality: "Rich" | "Medium" | "Poor";
+  complexity: "Simple" | "Medium" | "Complex";
+  stability: "Stable" | "Moderate" | "Unstable";
+  dissonanceLevel: "Low" | "Medium" | "High";
+  emotionalTendency: string;
+  primaryEmotions: string[];
+  secondaryEmotions: string[];
+  progressionType: "Ascending" | "Descending" | "Circular" | "Stable";
+  stabilityTrend: "Improving" | "Declining" | "Fluctuating" | "Consistent";
+  qualityConfidence: number;
+  complexityConfidence: number;
+  stabilityConfidence: number;
+  overallConfidence: number;
+}
+
+export interface RhythmicMetadata {
+  grooveType: "Strong" | "Medium" | "Weak";
+  rhythmicComplexity: "Simple" | "Medium" | "Complex";
+  beatStrength: "Strong" | "Medium" | "Weak";
+  syncopationLevel: "Low" | "Medium" | "High";
+  emotionalTendency: string;
+  primaryEmotions: string[];
+  secondaryEmotions: string[];
+  rhythmicProgression: "Building" | "Maintaining" | "Breaking" | "Stable";
+  grooveStability: "Consistent" | "Fluctuating" | "Evolving" | "Unstable";
+  grooveConfidence: number;
+  complexityConfidence: number;
+  beatConfidence: number;
+  overallConfidence: number;
+}
+
+export interface StructuredAudioMetadata {
+  harmonic: HarmonicMetadata | null;
+  rhythmic: RhythmicMetadata | null;
+  // Weitere Metadaten werden später hinzugefügt
+  // timbral: TimbralMetadata | null;
+  // dynamic: DynamicMetadata | null;
+
+  // Metadaten-Qualitäts-Indikatoren
+  overallQuality: number;
+  metadataCompleteness: number;
+  confidenceLevel: "High" | "Medium" | "Low";
+
+  // Zeitstempel und Kontext
+  timestamp: number;
+  contextWindow: number;
+  analysisVersion: string;
+}

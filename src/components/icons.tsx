@@ -19,6 +19,7 @@ import {
   Check,
   Key,
   Palette,
+  TestTube,
 } from "lucide-react";
 
 export const PlayIcon: React.FC = () => <Play className="w-6 h-6" />;
@@ -33,6 +34,7 @@ export const VisualizationSettingsIcon: React.FC = () => (
   <Palette className="w-6 h-6" />
 );
 export const ApiKeyIcon: React.FC = () => <Key className="w-6 h-6" />;
+export const PipelineIcon: React.FC = () => <TestTube className="w-6 h-6" />;
 export const UserIcon: React.FC = () => <User className="w-5 h-5" />;
 export const PlusIcon: React.FC = () => <Plus className="w-5 h-5" />;
 export const SparklesIcon: React.FC = () => <Sparkles className="w-5 h-5" />;
